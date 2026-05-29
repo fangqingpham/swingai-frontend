@@ -6,7 +6,7 @@ import {
 } from "recharts";
 
 // ─── Config ─────────────────────────────────────────────────────────────────
-const API_BASE = ""; // Vercel rewrites proxy /api/* to Railway — see vercel.json
+const API_URL = import.meta.env.VITE_API_URL || "https://swingai-api-production.up.railway.app";
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "https://cpoumpdgmjbqhmjqrgec.supabase.co";
 const SUPABASE_ANON = import.meta.env.VITE_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNwb3VtcGRnbWpicWhtanFyZ2VjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk3MDcxNDcsImV4cCI6MjA5NTI4MzE0N30.q4-QleVM5flNGGltA7veVwrQq0e8NX-luz6eNdJ3lNs";
 
@@ -15,7 +15,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON);
 // Returns { data, error } — never throws
 const api = async (path, opts = {}) => {
   try {
-    const r = await fetch(`${API_BASE}${path}`, {
+    const r = await fetch(`${API_URL.replace(/\/$/, "")}${path}`, {
       headers: { "Content-Type": "application/json", ...opts.headers },
       ...opts,
     });
@@ -55,83 +55,90 @@ const URGENCY_BADGE = {
 
 // ─── Styles ──────────────────────────────────────────────────────────────────
 const css = `
-  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Syne:wght@400;600;700;800&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
   :root {
-    --bg:       #050B14;
-    --bg2:      #0D1520;
-    --bg3:      #111D2E;
-    --bg4:      #182435;
-    --border:   rgba(0,255,178,0.12);
-    --border2:  rgba(255,255,255,0.06);
+    --bg:       #06080D;
+    --bg2:      #0D1118;
+    --bg3:      #121821;
+    --bg4:      #18202B;
+    --border:   rgba(0,255,178,0.14);
+    --border2:  rgba(255,255,255,0.08);
     --green:    #00FFB2;
     --green2:   #A3F7BF;
     --red:      #FF4D4D;
     --amber:    #FBB024;
     --blue:     #4DA6FF;
-    --muted:    rgba(255,255,255,0.35);
-    --text:     rgba(255,255,255,0.9);
-    --text2:    rgba(255,255,255,0.6);
+    --muted:    rgba(223,232,244,0.42);
+    --text:     rgba(246,248,251,0.92);
+    --text2:    rgba(223,232,244,0.66);
     --mono:     'JetBrains Mono', monospace;
-    --ui:       'Syne', sans-serif;
+    --ui:       'Inter', sans-serif;
   }
 
   html, body, #root { height: 100%; background: var(--bg); color: var(--text); font-family: var(--ui); overflow: hidden; }
-  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  body { font-size: 14px; line-height: 1.45; }
+  ::-webkit-scrollbar { width: 7px; height: 7px; }
   ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.16); border-radius: 999px; }
   .app { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
 
-  .header { display: flex; align-items: center; gap: 16px; padding: 0 20px; height: 52px; background: var(--bg2); border-bottom: 1px solid var(--border); flex-shrink: 0; }
-  .logo { font-family: var(--ui); font-weight: 800; font-size: 18px; letter-spacing: -0.5px; background: linear-gradient(135deg, var(--green), #4DA6FF); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+  .header { display: flex; align-items: center; gap: 18px; padding: 0 22px; min-height: 56px; background: rgba(13,17,24,0.96); border-bottom: 1px solid var(--border2); flex-shrink: 0; box-shadow: 0 1px 0 rgba(255,255,255,0.03); }
+  .logo { font-family: var(--ui); font-weight: 800; font-size: 18px; letter-spacing: 0; background: linear-gradient(135deg, var(--green), #7CC2FF); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; flex-shrink: 0; }
   .logo span { font-weight: 400; opacity: 0.5; }
-  .header-nav { display: flex; gap: 4px; margin-left: 12px; }
-  .nav-btn { padding: 6px 14px; border-radius: 6px; border: none; cursor: pointer; font-family: var(--ui); font-size: 12px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; background: transparent; color: var(--text2); transition: all 0.15s; }
-  .nav-btn:hover { background: var(--bg3); color: var(--text); }
-  .nav-btn.active { background: rgba(0,255,178,0.12); color: var(--green); }
+  .header-nav { display: flex; gap: 4px; margin-left: 4px; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+  .header-nav::-webkit-scrollbar { display: none; }
+  .nav-btn { min-height: 32px; padding: 7px 12px; border-radius: 6px; border: 1px solid transparent; cursor: pointer; font-family: var(--ui); font-size: 11px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; background: transparent; color: var(--text2); transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.15s; }
+  .nav-btn:hover { background: rgba(255,255,255,0.045); color: var(--text); border-color: var(--border2); }
+  .nav-btn.active { background: rgba(0,255,178,0.10); color: var(--green); border-color: rgba(0,255,178,0.22); }
   .header-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
   .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 6px var(--green); }
-  .user-pill { padding: 4px 12px; border-radius: 20px; background: var(--bg3); border: 1px solid var(--border2); font-size: 11px; color: var(--text2); cursor: pointer; }
-  .logout-btn { padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border2); background: transparent; color: var(--muted); font-size: 11px; cursor: pointer; }
+  .user-pill { max-width: 160px; overflow: hidden; text-overflow: ellipsis; padding: 5px 11px; border-radius: 999px; background: var(--bg3); border: 1px solid var(--border2); font-size: 11px; color: var(--text2); cursor: pointer; white-space: nowrap; }
+  .logout-btn { min-height: 28px; padding: 5px 10px; border-radius: 6px; border: 1px solid var(--border2); background: transparent; color: var(--muted); font-size: 11px; cursor: pointer; }
   .logout-btn:hover { border-color: var(--red); color: var(--red); }
 
   .main { display: flex; flex: 1; overflow: hidden; }
-  .content { flex: 1; overflow-y: auto; padding: 20px; }
+  .content { flex: 1; overflow-y: auto; padding: 22px; }
 
-  .card { background: var(--bg2); border: 1px solid var(--border2); border-radius: 10px; padding: 16px; }
-  .card-title { font-size: 11px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); margin-bottom: 12px; }
+  .card { background: linear-gradient(180deg, rgba(255,255,255,0.025), rgba(255,255,255,0.005)), var(--bg2); border: 1px solid var(--border2); border-radius: 8px; padding: 18px; box-shadow: 0 12px 28px rgba(0,0,0,0.18); }
+  .card-title { font-size: 11px; font-weight: 800; letter-spacing: 1.2px; text-transform: uppercase; color: var(--muted); margin-bottom: 14px; }
 
-  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-  .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .grid-2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; align-items: stretch; }
+  .grid-4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; align-items: stretch; }
   .mt-3 { margin-top: 12px; }
   .mt-4 { margin-top: 16px; }
   .w-full { width: 100%; }
 
-  .stat-card { background: var(--bg2); border: 1px solid var(--border2); border-radius: 10px; padding: 14px 16px; }
-  .stat-label { font-size: 10px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); }
-  .stat-value { font-family: var(--mono); font-size: 24px; font-weight: 700; margin-top: 4px; }
-  .stat-sub { font-size: 11px; color: var(--text2); margin-top: 3px; }
+  .stat-card { background: linear-gradient(180deg, rgba(255,255,255,0.025), rgba(255,255,255,0.006)), var(--bg2); border: 1px solid var(--border2); border-radius: 8px; padding: 16px; min-height: 108px; display: flex; flex-direction: column; justify-content: center; }
+  .stat-label { font-size: 10px; font-weight: 800; letter-spacing: 1.2px; text-transform: uppercase; color: var(--muted); }
+  .stat-value { font-family: var(--mono); font-size: 24px; font-weight: 700; margin-top: 6px; line-height: 1.1; }
+  .stat-sub { font-size: 11px; color: var(--text2); margin-top: 6px; line-height: 1.35; }
 
-  .table-wrap { overflow-x: auto; }
-  table { width: 100%; border-collapse: collapse; font-family: var(--mono); }
-  th { text-align: left; padding: 8px 10px; font-size: 9px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--border); white-space: nowrap; position: sticky; top: 0; background: var(--bg2); z-index: 1; }
-  td { padding: 9px 10px; font-size: 12px; border-bottom: 1px solid rgba(255,255,255,0.04); white-space: nowrap; }
-  tr:hover td { background: rgba(255,255,255,0.02); }
+  .table-wrap { overflow-x: auto; border-radius: inherit; }
+  table { width: 100%; border-collapse: separate; border-spacing: 0; font-family: var(--mono); min-width: 760px; }
+  th { text-align: left; padding: 10px 12px; font-size: 9px; font-weight: 800; letter-spacing: 1.2px; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--border2); white-space: nowrap; position: sticky; top: 0; background: #0F141C; z-index: 1; }
+  td { padding: 11px 12px; font-size: 12px; border-bottom: 1px solid rgba(255,255,255,0.045); white-space: nowrap; vertical-align: middle; color: var(--text2); }
+  tbody tr:nth-child(even) td { background: rgba(255,255,255,0.012); }
+  tr:hover td { background: rgba(0,255,178,0.035); }
   tr:last-child td { border-bottom: none; }
+  td:first-child, th:first-child { color: var(--text); padding-left: 14px; }
 
   .score-bar { display: flex; align-items: center; gap: 8px; }
   .score-bar-bg { flex: 1; height: 4px; background: rgba(255,255,255,0.08); border-radius: 2px; overflow: hidden; }
   .score-bar-fill { height: 100%; border-radius: 2px; transition: width 0.4s; }
 
-  .badge { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; letter-spacing: 0.5px; border: 1px solid currentColor; white-space: nowrap; }
+  .badge { display: inline-flex; align-items: center; justify-content: center; min-height: 20px; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 800; letter-spacing: 0.5px; border: 1px solid currentColor; white-space: nowrap; }
 
   .pos-progress { position: relative; height: 6px; background: rgba(255,255,255,0.08); border-radius: 3px; overflow: visible; min-width: 80px; }
   .pos-fill { height: 100%; border-radius: 3px; }
   .pos-marker { position: absolute; top: -4px; width: 2px; height: 14px; background: white; border-radius: 1px; box-shadow: 0 0 4px rgba(255,255,255,0.6); }
 
-  .btn { padding: 7px 14px; border-radius: 6px; border: none; cursor: pointer; font-family: var(--ui); font-size: 12px; font-weight: 700; transition: all 0.15s; white-space: nowrap; }
+  .btn { min-height: 32px; padding: 7px 14px; border-radius: 6px; border: none; cursor: pointer; font-family: var(--ui); font-size: 12px; font-weight: 800; transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.15s, box-shadow 0.15s; white-space: nowrap; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+  .btn:hover:not(:disabled) { transform: translateY(-1px); }
+  .btn:active:not(:disabled) { transform: translateY(0); }
+  .btn:focus-visible, .nav-btn:focus-visible, .logout-btn:focus-visible, .input:focus-visible { outline: 2px solid rgba(77,166,255,0.45); outline-offset: 2px; }
   .btn:disabled { opacity: .5; cursor: not-allowed; }
   .btn-green { background: rgba(0,255,178,0.15); color: var(--green); border: 1px solid rgba(0,255,178,0.3); }
   .btn-green:hover:not(:disabled) { background: rgba(0,255,178,0.25); }
@@ -142,13 +149,13 @@ const css = `
   .btn-blue { background: rgba(77,166,255,0.15); color: var(--blue); border: 1px solid rgba(77,166,255,0.3); }
   .btn-amber { background: rgba(251,176,36,0.15); color: var(--amber); border: 1px solid rgba(251,176,36,0.3); }
 
-  .input { background: var(--bg3); border: 1px solid var(--border2); border-radius: 6px; padding: 8px 12px; color: var(--text); font-family: var(--mono); font-size: 13px; outline: none; width: 100%; }
+  .input { background: var(--bg3); border: 1px solid var(--border2); border-radius: 6px; padding: 9px 12px; color: var(--text); font-family: var(--mono); font-size: 13px; outline: none; width: 100%; min-height: 36px; }
   .input:focus { border-color: var(--green); }
   .input::placeholder { color: var(--muted); }
   label { font-size: 11px; font-weight: 600; color: var(--text2); margin-bottom: 4px; display: block; }
 
   .login-screen { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: radial-gradient(ellipse at 50% 0%, rgba(0,255,178,0.04) 0%, transparent 60%), var(--bg); }
-  .login-box { background: var(--bg2); border: 1px solid var(--border); border-radius: 16px; padding: 40px 36px; width: 360px; box-shadow: 0 0 60px rgba(0,255,178,0.05); }
+  .login-box { background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 40px 36px; width: min(360px, calc(100vw - 32px)); box-shadow: 0 0 60px rgba(0,255,178,0.05); }
   .login-logo { font-size: 28px; font-weight: 800; margin-bottom: 6px; background: linear-gradient(135deg, var(--green), var(--blue)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
   .login-sub { font-size: 13px; color: var(--muted); margin-bottom: 28px; }
 
@@ -167,8 +174,8 @@ const css = `
   .err-box { background: rgba(255,77,77,.08); border: 1px solid rgba(255,77,77,.25); border-radius: 8px; padding: 12px 14px; font-size: 12px; color: var(--red); margin-bottom: 12px; }
   .ok-box  { background: rgba(0,255,178,.08); border: 1px solid rgba(0,255,178,.25); border-radius: 8px; padding: 12px 14px; font-size: 12px; color: var(--green); margin-bottom: 12px; }
 
-  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; z-index: 100; }
-  .modal { background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; padding: 24px; width: min(480px, 90vw); box-shadow: 0 20px 80px rgba(0,0,0,0.5); }
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.78); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 16px; }
+  .modal { background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 24px; width: min(520px, 100%); max-height: calc(100vh - 32px); overflow-y: auto; box-shadow: 0 20px 80px rgba(0,0,0,0.5); }
   .modal-title { font-size: 16px; font-weight: 700; margin-bottom: 16px; }
   .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
 
@@ -177,7 +184,7 @@ const css = `
   .alert-sell { border-left: 3px solid var(--red); }
   .alert-info { border-left: 3px solid var(--blue); }
 
-  .tag { display: inline-block; padding: 1px 7px; border-radius: 4px; font-size: 10px; font-weight: 600; background: rgba(255,255,255,0.07); color: var(--text2); }
+  .tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; background: rgba(255,255,255,0.07); color: var(--text2); border: 1px solid rgba(255,255,255,0.04); }
   .signals-list { display: flex; flex-wrap: wrap; gap: 5px; }
   .signal-pill { padding: 2px 8px; border-radius: 4px; font-size: 10px; background: rgba(0,255,178,0.08); color: var(--green2); border: 1px solid rgba(0,255,178,0.15); }
 
@@ -187,8 +194,31 @@ const css = `
 
   .grid-2.gap-3 { gap: 12px; }
 
-  @media (max-width: 900px) { .grid-4 { grid-template-columns: repeat(2, 1fr); } }
-  @media (max-width: 640px) { .grid-2, .grid-4 { grid-template-columns: 1fr; } .header-nav .nav-btn { font-size: 10px; padding: 5px 8px; } }
+  @media (max-width: 900px) {
+    .content { padding: 18px; }
+    .grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .header { gap: 12px; }
+    .header-right { gap: 8px; }
+  }
+  @media (max-width: 720px) {
+    .header { flex-wrap: wrap; align-items: center; padding: 10px 14px; }
+    .header-nav { order: 3; width: 100%; margin-left: 0; padding-bottom: 1px; }
+    .header-right { margin-left: auto; }
+    .content { padding: 14px; }
+    .section-header { align-items: flex-start; flex-direction: column; gap: 10px; }
+    .section-header > div:last-child { width: 100%; }
+    .modal-actions { flex-wrap: wrap; }
+  }
+  @media (max-width: 640px) {
+    .grid-2, .grid-4 { grid-template-columns: 1fr; }
+    .card, .stat-card { padding: 14px; }
+    .header-nav .nav-btn { font-size: 10px; padding: 6px 9px; }
+    .user-pill { max-width: 110px; }
+    .logout-btn { padding-inline: 8px; }
+    table { min-width: 720px; }
+    th { padding: 9px 10px; }
+    td { padding: 10px; }
+  }
 `;
 
 const ChartTooltip = ({ active, payload, label }) => {
@@ -226,6 +256,25 @@ function PositionBar({ entry, current, target, stop }) {
       <div className="pos-fill" style={{ width: `${filled}%`, background: "linear-gradient(90deg, rgba(255,77,77,.4) 0%, rgba(251,176,36,.5) 40%, rgba(0,255,178,.5) 100%)" }} />
       <div className="pos-marker" style={{ left: `${Math.min(Math.max(((entry - stop) / range) * 100, 1), 99)}%` }} />
     </div>
+  );
+}
+
+function PriceReliabilityBadge({ position }) {
+  if (!position?.fallback_to_entry) return null;
+  return (
+    <span
+      className="badge"
+      title={`Price source: ${position.price_source || "unknown"}`}
+      style={{
+        background: "rgba(251, 176, 36, .12)",
+        color: "var(--amber)",
+        borderColor: "rgba(251, 176, 36, .35)",
+        fontSize: 9,
+        marginTop: 3,
+      }}
+    >
+      entry fallback
+    </span>
   );
 }
 
@@ -328,6 +377,7 @@ function DashboardPage({ positions, screenerResults, alerts }) {
                     <div style={{ flex: 1 }}>
                       <PositionBar entry={p.entry_price} current={p.current_price} target={p.target_price} stop={p.stop_loss} />
                       <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 3 }}>{p.days_held}d held</div>
+                      <PriceReliabilityBadge position={p} />
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3 }}>
                       <span style={{ fontFamily: "var(--mono)", fontSize: 12, color: PNL_COLOR(p.pnl_pct || 0) }}>
@@ -362,7 +412,7 @@ function DashboardPage({ positions, screenerResults, alerts }) {
 }
 
 // ─── Screener ─────────────────────────────────────────────────────────────────
-function ScreenerPage() {
+function ScreenerPage({ onScanComplete }) {
   const [results, setResults]     = useState([]);
   const [loading, setLoading]     = useState(false);
   const [progress, setProgress]   = useState("");
@@ -410,7 +460,7 @@ function ScreenerPage() {
         setResults(s.results || []);
         setProgress(`✓ Scan complete — ${s.count} stock${s.count !== 1 ? "s" : ""} scored ≥${minScore}${s.count === 0 ? ". Try lowering Min Score." : ""}`);
         setLoading(false);
-        if (onScanComplete) onScanComplete();
+        if (typeof onScanComplete === "function") onScanComplete();
       }
     }, 3000);
   };
@@ -680,6 +730,7 @@ function PortfolioPage({ positions, onRefresh }) {
                         <td>${parseFloat(p.entry_price).toFixed(2)}</td>
                         <td>
                           <div>${typeof p.current_price === "number" ? p.current_price.toFixed(2) : "–"}</div>
+                          <PriceReliabilityBadge position={p} />
                           <div style={{ fontSize: 10, color: PNL_COLOR(p.change_pct || 0) }}>{(p.change_pct || 0) >= 0 ? "+" : ""}{(p.change_pct || 0).toFixed(2)}%</div>
                         </td>
                         <td>
@@ -987,8 +1038,16 @@ function SettingsPage() {
   }, []);
 
   const saveSettings = async () => {
-    await api(`/api/settings?key=min_score_alert&value=${minScore}`, { method: "POST" });
-    if (finnhubKey) await api(`/api/settings?key=finnhub_key&value=${finnhubKey}`, { method: "POST" });
+    await api("/api/settings", {
+      method: "POST",
+      body: JSON.stringify({ key: "min_score_alert", value: minScore }),
+    });
+    if (finnhubKey) {
+      await api("/api/settings", {
+        method: "POST",
+        body: JSON.stringify({ key: "finnhub_key", value: finnhubKey }),
+      });
+    }
     setSaved(true); setTimeout(() => setSaved(false), 2000);
   };
 
@@ -1053,6 +1112,7 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(true);
   const [tab,         setTab]         = useLocalStorage("swingai-tab", "dashboard");
   const [positions,   setPositions]   = useState([]);
+  const [portfolioError, setPortfolioError] = useState(null);
   const [screenerResults, setScreenerResults] = useState([]);
   const [alerts,      setAlerts]      = useState([]);
 
@@ -1071,7 +1131,12 @@ export default function App() {
       api("/api/alerts/history"),
       api("/api/screener/results"),
     ]);
-    if (posRes.data)   setPositions(posRes.data.positions || []);
+    if (posRes.data) {
+      setPositions(posRes.data.positions || []);
+      setPortfolioError(null);
+    } else if (posRes.error) {
+      setPortfolioError(posRes.error);
+    }
     if (alertRes.data) setAlerts(alertRes.data.alerts || []);
     if (scanRes.data)  setScreenerResults(scanRes.data.results || []);
   }, []);
@@ -1133,7 +1198,13 @@ export default function App() {
               <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>{subs[tab]}</div>
             </div>
             {tab === "dashboard" && <DashboardPage positions={positions} screenerResults={screenerResults} alerts={alerts} />}
-            {tab === "screener"  && <ScreenerPage />}
+            {tab === "screener"  && <ScreenerPage onScanComplete={loadData} />}
+            {portfolioError && (
+              <div className="card" style={{ borderColor: "rgba(239,68,68,.35)", marginBottom: 14 }}>
+                <div style={{ fontWeight: 700, marginBottom: 4 }}>Portfolio unavailable</div>
+                <div style={{ color: "var(--muted)", fontSize: 13 }}>Unable to refresh portfolio positions. Screener data is still available.</div>
+              </div>
+            )}
             {tab === "portfolio" && <PortfolioPage positions={positions} onRefresh={loadData} />}
             {tab === "history"   && <HistoryPage />}
             {tab === "alerts"    && <AlertsPage />}
