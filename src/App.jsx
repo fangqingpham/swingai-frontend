@@ -285,7 +285,7 @@ function PriceReliabilityBadge({ position }) {
 }
 
 // ─── Login ────────────────────────────────────────────────────────────────────
-function LoginPage() {
+function LoginPage({ embedded = false }) {
   const [email, setEmail] = useState("katiepham2302@gmail.com");
   const [pass,  setPass]  = useState("");
   const [err,   setErr]   = useState("");
@@ -298,8 +298,7 @@ function LoginPage() {
     setLoading(false);
   };
 
-  return (
-    <div className="login-screen">
+  const box = (
       <div className="login-box fade-up">
         <div className="login-logo">SwingAI</div>
         <div className="login-sub">Intelligent Swing Trading Platform</div>
@@ -321,8 +320,9 @@ function LoginPage() {
           Semi-Automated · AI-Powered · Review Before Trading
         </div>
       </div>
-    </div>
   );
+
+  return embedded ? box : <div className="login-screen">{box}</div>;
 }
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
@@ -418,7 +418,7 @@ function DashboardPage({ positions, screenerResults, alerts }) {
 }
 
 // ─── Screener ─────────────────────────────────────────────────────────────────
-function ScreenerPage({ onScanComplete }) {
+function ScreenerPage({ onScanComplete, readOnly = false }) {
   const [results, setResults]     = useState([]);
   const [loading, setLoading]     = useState(false);
   const [progress, setProgress]   = useState("");
@@ -439,6 +439,7 @@ function ScreenerPage({ onScanComplete }) {
   }, []);
 
   const runScan = async () => {
+    if (readOnly) return;
     setLoading(true); setErrMsg(""); setProgress("Starting scan…");
     const tickers = customTickers.trim()
       ? customTickers.split(/[\s,]+/).map(t => t.trim().toUpperCase()).filter(Boolean)
@@ -472,6 +473,7 @@ function ScreenerPage({ onScanComplete }) {
   };
 
   const analyzeStock = async ticker => {
+    if (readOnly) return;
     setSelected(ticker); setAnalyzeLoading(true); setAnalysis(null);
     const { data, error } = await api("/api/ai/analyze", { method: "POST", body: JSON.stringify({ ticker }) });
     setAnalysis(error ? { error } : data);
@@ -479,6 +481,7 @@ function ScreenerPage({ onScanComplete }) {
   };
 
   const sendAlert = async ticker => {
+    if (readOnly) return;
     setAlertSent(p => ({ ...p, [ticker]: "sending" }));
     await api(`/api/alerts/send-buy?ticker=${ticker}`, { method: "POST" });
     setAlertSent(p => ({ ...p, [ticker]: "sent" }));
@@ -497,14 +500,14 @@ function ScreenerPage({ onScanComplete }) {
           <div style={{ flex: 1, minWidth: 200 }}>
             <label>Tickers (leave blank for full scan of 80+ stocks)</label>
             <input className="input" placeholder="e.g. AAPL MSFT NVDA TSLA" value={customTickers}
-              onChange={e => setCustomTickers(e.target.value)} onKeyDown={e => e.key === "Enter" && runScan()} style={{ fontSize: 12 }} />
+              onChange={e => setCustomTickers(e.target.value)} onKeyDown={e => e.key === "Enter" && runScan()} style={{ fontSize: 12 }} disabled={readOnly} />
           </div>
           <div style={{ minWidth: 110 }}>
             <label>Min Score</label>
-            <input className="input" type="number" min={0} max={100} value={minScore} onChange={e => setMinScore(Number(e.target.value))} style={{ width: "100%" }} />
+            <input className="input" type="number" min={0} max={100} value={minScore} onChange={e => setMinScore(Number(e.target.value))} style={{ width: "100%" }} disabled={readOnly} />
           </div>
-          <button className="btn btn-green" onClick={runScan} disabled={loading} style={{ padding: "8px 20px", alignSelf: "flex-end" }}>
-            {loading ? "⏳ Scanning…" : "▶ Run Scan"}
+          <button className="btn btn-green" onClick={runScan} disabled={loading || readOnly} style={{ padding: "8px 20px", alignSelf: "flex-end" }}>
+            {readOnly ? "Sign in to Scan" : loading ? "⏳ Scanning…" : "▶ Run Scan"}
           </button>
         </div>
         {loading && (
@@ -556,8 +559,8 @@ function ScreenerPage({ onScanComplete }) {
                     <td style={{ color: "var(--red)" }}>${r.stop?.toFixed(2)}</td>
                     <td>
                       <div style={{ display: "flex", gap: 4 }}>
-                        <button className="btn btn-blue" style={{ padding: "4px 8px", fontSize: 10 }} onClick={() => analyzeStock(r.ticker)}>AI</button>
-                        <button className="btn btn-amber" style={{ padding: "4px 8px", fontSize: 10 }} onClick={() => sendAlert(r.ticker)} disabled={alertSent[r.ticker] === "sending"}>
+                        <button className="btn btn-blue" style={{ padding: "4px 8px", fontSize: 10 }} onClick={() => analyzeStock(r.ticker)} disabled={readOnly}>AI</button>
+                        <button className="btn btn-amber" style={{ padding: "4px 8px", fontSize: 10 }} onClick={() => sendAlert(r.ticker)} disabled={readOnly || alertSent[r.ticker] === "sending"}>
                           {alertSent[r.ticker] === "sent" ? "✓" : alertSent[r.ticker] === "sending" ? "…" : "📲"}
                         </button>
                       </div>
@@ -1179,6 +1182,71 @@ function SettingsPage() {
   );
 }
 
+// ─── Guest Read-Only App ──────────────────────────────────────────────────────
+function GuestReadOnlyPage() {
+  const [guestTab, setGuestTab] = useState("screener");
+  const [showLogin, setShowLogin] = useState(false);
+  const tabs = [
+    { id: "dashboard", label: "DASHBOARD", locked: true },
+    { id: "screener",  label: "SCREENER",  locked: false },
+    { id: "portfolio", label: "PORTFOLIO", locked: true },
+    { id: "history",   label: "HISTORY",   locked: true },
+    { id: "ai",        label: "AI",        locked: true },
+  ];
+
+  return (
+    <>
+      <style>{css}</style>
+      <div className="app">
+        <header className="header">
+          <div className="logo">Swing<span>AI</span></div>
+          <nav className="header-nav">
+            {tabs.map(t => (
+              <button
+                key={t.id}
+                className={`nav-btn ${guestTab === t.id ? "active" : ""}`}
+                onClick={() => setGuestTab(t.id)}
+                title={t.locked ? "Sign in required" : undefined}
+              >
+                {t.label}{t.locked ? " 🔒" : ""}
+              </button>
+            ))}
+          </nav>
+          <div className="header-right">
+            <span className="badge" style={{ color: "var(--blue)", borderColor: "rgba(77,166,255,0.4)", background: "rgba(77,166,255,0.1)" }}>Guest</span>
+            <button className="btn btn-green" style={{ padding: "6px 14px" }} onClick={() => setShowLogin(true)}>Sign in</button>
+          </div>
+        </header>
+        <main className="main">
+          <div className="content">
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 18, fontWeight: 700 }}>{guestTab === "screener" ? "Stock Screener" : tabs.find(t => t.id === guestTab)?.label}</div>
+              <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>Read-only preview · Sign in to scan, trade, or send alerts</div>
+            </div>
+            {guestTab === "screener" ? (
+              <div className={showLogin ? "grid-2" : undefined} style={{ gap: 12, alignItems: "start" }}>
+                <div>
+                  <ScreenerPage readOnly />
+                </div>
+                {showLogin && <LoginPage embedded />}
+              </div>
+            ) : (
+              <div className={showLogin ? "grid-2" : undefined} style={{ gap: 12, alignItems: "start" }}>
+                <div className="empty" style={{ padding: "60px 20px" }}>
+                  <div style={{ fontSize: 40, marginBottom: 14 }}>🔒</div>
+                  <h3 style={{ fontSize: 18 }}>Sign in required</h3>
+                  <p style={{ maxWidth: 420, margin: "8px auto 0" }}>This section is available to signed-in users.</p>
+                </div>
+                {showLogin && <LoginPage embedded />}
+              </div>
+            )}
+          </div>
+        </main>
+      </div>
+    </>
+  );
+}
+
 // ─── Main App ─────────────────────────────────────────────────────────────────
 export default function App() {
   const [user,        setUser]        = useState(null);
@@ -1223,7 +1291,7 @@ export default function App() {
     </div>
   );
 
-  if (!user) return <LoginPage />;
+  if (!user) return <GuestReadOnlyPage />;
 
   const urgent   = positions.filter(p => (p.sell_urgency || 0) >= 2).length;
   const topToday = screenerResults.filter(s => s.score >= 75).length;
