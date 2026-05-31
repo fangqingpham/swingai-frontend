@@ -15,8 +15,14 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON);
 // Returns { data, error } — never throws
 const api = async (path, opts = {}) => {
   try {
+    let authHeader = {};
+    try {
+      const { data } = await supabase.auth.getSession();
+      const token = data?.session?.access_token;
+      if (token) authHeader = { Authorization: `Bearer ${token}` };
+    } catch { /* send request without a token */ }
     const r = await fetch(`${API_URL.replace(/\/$/, "")}${path}`, {
-      headers: { "Content-Type": "application/json", ...opts.headers },
+      headers: { "Content-Type": "application/json", ...authHeader, ...opts.headers },
       ...opts,
     });
     const json = await r.json().catch(() => ({}));
@@ -617,6 +623,10 @@ function PortfolioPage({ positions, onRefresh }) {
   const [saving, setSaving]   = useState(false);
   const [saveErr, setSaveErr] = useState("");
   const [saveOk, setSaveOk]   = useState("");
+  const [analyzeTicker, setAnalyzeTicker] = useState("");
+  const [singleScan, setSingleScan] = useState(null);
+  const [singleScanErr, setSingleScanErr] = useState("");
+  const [singleScanLoading, setSingleScanLoading] = useState(false);
   const [form, setForm] = useState({
     ticker: "", entry_price: "", quantity: "",
     entry_date: new Date().toISOString().split("T")[0],
@@ -678,6 +688,24 @@ function PortfolioPage({ positions, onRefresh }) {
     setClosePos(null); setClosePrice(""); onRefresh();
   };
 
+  const analyzeSingleTicker = async () => {
+    const ticker = analyzeTicker.trim().toUpperCase();
+    if (!ticker) return;
+    setSingleScanLoading(true);
+    setSingleScanErr("");
+    const { data, error } = await api("/api/screener/single", {
+      method: "POST",
+      body: JSON.stringify({ ticker }),
+    });
+    setSingleScanLoading(false);
+    if (error) {
+      setSingleScan(null);
+      setSingleScanErr(error);
+      return;
+    }
+    setSingleScan(data);
+  };
+
   return (
     <div className="fade-up">
       <div className="grid-4" style={{ marginBottom: 14 }}>
@@ -699,6 +727,49 @@ function PortfolioPage({ positions, onRefresh }) {
 
       {saveErr && <div className="err-box">{saveErr}</div>}
       {saveOk  && <div className="ok-box">{saveOk}</div>}
+
+      <div className="card" style={{ marginBottom: 14 }}>
+        <div className="card-title">Analyze Ticker</div>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
+          <div style={{ flex: 1, minWidth: 180 }}>
+            <label>Single ticker scan</label>
+            <input
+              className="input"
+              placeholder="QBTS"
+              value={analyzeTicker}
+              onChange={e => setAnalyzeTicker(e.target.value.toUpperCase())}
+              onKeyDown={e => e.key === "Enter" && analyzeSingleTicker()}
+            />
+          </div>
+          <button className="btn btn-blue" onClick={analyzeSingleTicker} disabled={singleScanLoading || !analyzeTicker.trim()}>
+            {singleScanLoading ? "Scanning..." : "Analyze"}
+          </button>
+        </div>
+        {singleScanErr && <div className="err-box" style={{ marginTop: 10, marginBottom: 0 }}>{singleScanErr}</div>}
+        {singleScan && (
+          <div style={{ marginTop: 12, borderTop: "1px solid var(--border2)", paddingTop: 12 }}>
+            <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+              <div style={{ fontFamily: "var(--mono)", fontWeight: 700, fontSize: 16 }}>{singleScan.ticker}</div>
+              {singleScan.score != null && <ScoreGauge score={singleScan.score} />}
+              {singleScan.win_rate != null && <span className="badge">{singleScan.win_rate}% WR</span>}
+              {singleScan.setup && <span className="tag">{singleScan.setup}</span>}
+              {singleScan.rescore_status && singleScan.rescore_status !== "ok" && <span className="badge">{singleScan.rescore_status}</span>}
+            </div>
+            {singleScan.current_price != null && (
+              <div style={{ marginTop: 8, fontSize: 12, color: "var(--text2)" }}>
+                Current: ${Number(singleScan.current_price).toFixed(2)}
+                {singleScan.target != null && ` | Target: $${Number(singleScan.target).toFixed(2)}`}
+                {singleScan.stop != null && ` | Stop: $${Number(singleScan.stop).toFixed(2)}`}
+              </div>
+            )}
+            {singleScan.signals?.length > 0 && (
+              <div className="signals-list" style={{ marginTop: 10 }}>
+                {singleScan.signals.slice(0, 5).map((s, i) => <span key={i} className="signal-pill">{s}</span>)}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
       <div className="section-header">
         <div>
