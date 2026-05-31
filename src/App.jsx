@@ -789,7 +789,7 @@ function PortfolioPage({ positions, onRefresh }) {
             <div className="table-wrap">
               <table>
                 <thead>
-                  <tr><th>Ticker</th><th>Entry</th><th>Current</th><th>P&L</th><th>Qty</th><th>Value</th><th>Days</th><th>Progress</th><th>Signal</th><th>Reasons</th><th>Actions</th></tr>
+                  <tr><th>Ticker</th><th>Entry</th><th>Current</th><th>P&L</th><th>Qty</th><th>Value</th><th>Days</th><th>Progress</th><th>R:R</th><th>Signal</th><th>Reasons</th><th>Actions</th></tr>
                 </thead>
                 <tbody>
                   {open.map((p, i) => {
@@ -816,6 +816,9 @@ function PortfolioPage({ positions, onRefresh }) {
                             <span>${parseFloat(p.stop_loss || 0).toFixed(0)}</span>
                             <span>${parseFloat(p.target_price || 0).toFixed(0)}</span>
                           </div>
+                        </td>
+                        <td style={{ color: p.risk_reward_label || p.risk_reward ? "var(--blue)" : "var(--muted)" }}>
+                          {p.risk_reward_label || (p.risk_reward != null ? `1:${Number(p.risk_reward).toFixed(1)}` : "-")}
                         </td>
                         <td><span className="badge" style={{ background: badge.bg, color: badge.text, borderColor: badge.border }}>{badge.label}</span></td>
                         <td style={{ maxWidth: 160, fontSize: 10, color: "var(--text2)", lineHeight: 1.5 }}>
