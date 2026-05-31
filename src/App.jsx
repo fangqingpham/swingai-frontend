@@ -533,7 +533,7 @@ function ScreenerPage({ onScanComplete }) {
           <div className="table-wrap">
             <table>
               <thead>
-                <tr><th>Ticker</th><th>Price</th><th>Chg%</th><th>Score</th><th>Win Rate</th><th>Setup</th><th>RSI</th><th>Vol</th><th>Target</th><th>Stop</th><th>R:R</th><th>Actions</th></tr>
+                <tr><th>Ticker</th><th>Price</th><th>Chg%</th><th>Score</th><th>Win Rate</th><th>Setup</th><th>RSI</th><th>Vol</th><th>Target</th><th>Stop</th><th>Actions</th></tr>
               </thead>
               <tbody>
                 {filtered.map((r, i) => (
@@ -548,7 +548,6 @@ function ScreenerPage({ onScanComplete }) {
                     <td><span style={{ color: (r.vol_ratio || 0) > 1.5 ? "var(--amber)" : "var(--text2)" }}>{r.vol_ratio?.toFixed(1) || "–"}x</span></td>
                     <td style={{ color: "var(--green)" }}>${r.target?.toFixed(2)}</td>
                     <td style={{ color: "var(--red)" }}>${r.stop?.toFixed(2)}</td>
-                    <td style={{ color: "var(--blue)" }}>1:{r.risk_reward?.toFixed(1)}</td>
                     <td>
                       <div style={{ display: "flex", gap: 4 }}>
                         <button className="btn btn-blue" style={{ padding: "4px 8px", fontSize: 10 }} onClick={() => analyzeStock(r.ticker)}>AI</button>
@@ -707,7 +706,7 @@ function PortfolioPage({ positions, onRefresh }) {
           <div className="section-sub">AI monitors these for sell signals automatically</div>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
-          <button className="btn btn-ghost" onClick={onRefresh} style={{ padding: "6px 12px", fontSize: 11 }}>↺ Refresh</button>
+          <button className="btn btn-ghost" onClick={() => onRefresh({ forcePortfolio: true })} style={{ padding: "6px 12px", fontSize: 11 }}>↺ Refresh</button>
           <button className="btn btn-green" onClick={() => setShowAdd(true)}>+ Log Position</button>
         </div>
       </div>
@@ -1125,9 +1124,10 @@ export default function App() {
     return () => l.subscription.unsubscribe();
   }, []);
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (opts = {}) => {
+    const portfolioPath = opts.forcePortfolio ? "/api/portfolio/positions?force_refresh=true" : "/api/portfolio/positions";
     const [posRes, alertRes, scanRes] = await Promise.all([
-      api("/api/portfolio/positions"),
+      api(portfolioPath),
       api("/api/alerts/history"),
       api("/api/screener/results"),
     ]);
