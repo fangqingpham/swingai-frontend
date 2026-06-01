@@ -590,6 +590,9 @@ function SingleTickerCheck({ guest = false }) {
   const volumeRatio = result?.volume_ratio ?? result?.vol_ratio;
   const formatMoney = value => value == null || value === "" ? "-" : `$${Number(value).toFixed(2)}`;
   const formatNumber = value => value == null || value === "" ? "-" : Number(value).toFixed(2);
+  const singleTickerColumns = guest
+    ? ["Price", "RSI", "Vol Ratio", "Target", "Stop Loss"]
+    : ["Price", "Chg%", "RSI", "Vol Ratio", "Target", "Stop Loss", "R:R", "Source"];
 
   return (
     <div className="card" style={{ marginBottom: 14 }}>
@@ -623,18 +626,18 @@ function SingleTickerCheck({ guest = false }) {
           <div className="table-wrap" style={{ marginTop: 12 }}>
             <table>
               <thead>
-                <tr><th>Price</th><th>Chg%</th><th>RSI</th><th>Vol Ratio</th><th>Target</th><th>Stop Loss</th><th>R:R</th><th>Source</th></tr>
+                <tr>{singleTickerColumns.map(col => <th key={col}>{col}</th>)}</tr>
               </thead>
               <tbody>
                 <tr>
                   <td>{formatMoney(result.current_price ?? result.price ?? result.scan_price)}</td>
-                  <td>{result.change_pct == null ? "-" : `${Number(result.change_pct).toFixed(2)}%`}</td>
+                  {!guest && <td>{result.change_pct == null ? "-" : `${Number(result.change_pct).toFixed(2)}%`}</td>}
                   <td>{formatNumber(result.rsi)}</td>
                   <td>{volumeRatio == null ? "-" : `${Number(volumeRatio).toFixed(2)}x`}</td>
                   <td>{formatMoney(result.target)}</td>
                   <td>{formatMoney(stop)}</td>
-                  <td>{result.risk_reward == null ? "-" : `1:${Number(result.risk_reward).toFixed(2)}`}</td>
-                  <td>{result.data_source || "-"}</td>
+                  {!guest && <td>{result.risk_reward == null ? "-" : `1:${Number(result.risk_reward).toFixed(2)}`}</td>}
+                  {!guest && <td>{result.data_source || "-"}</td>}
                 </tr>
               </tbody>
             </table>
