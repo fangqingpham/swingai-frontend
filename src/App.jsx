@@ -553,6 +553,9 @@ function DashboardPage({ positions, screenerResults, alerts }) {
 // ─── Screener ─────────────────────────────────────────────────────────────────
 function ScreenerPage({ onScanComplete, readOnly = false }) {
   const [results, setResults]     = useState([]);
+  const [removedResults, setRemovedResults] = useState([]);
+  const [qualityRefresh, setQualityRefresh] = useState(null);
+  const [showRemoved, setShowRemoved] = useState(false);
   const [loading, setLoading]     = useState(false);
   const [progress, setProgress]   = useState("");
   const [errMsg, setErrMsg]       = useState("");
@@ -567,7 +570,9 @@ function ScreenerPage({ onScanComplete, readOnly = false }) {
 
   const loadScreenerResults = useCallback(async () => {
     const { data } = await api("/api/screener/results");
-    if (data?.results?.length) setResults(data.results);
+    if (data?.results) setResults(data.results);
+    if (data) setRemovedResults(data.removed_results || []);
+    if (data) setQualityRefresh(data.quality_refresh || null);
   }, []);
 
   useEffect(() => {
@@ -629,6 +634,26 @@ function ScreenerPage({ onScanComplete, readOnly = false }) {
     setTimeout(() => setAlertSent(p => ({ ...p, [ticker]: null })), 3000);
   };
 
+  const formatEtTime = value => {
+    if (!value) return "";
+    try {
+      return new Date(value).toLocaleTimeString("en-US", {
+        hour: "numeric",
+        minute: "2-digit",
+        timeZone: "America/New_York",
+      });
+    } catch {
+      return "";
+    }
+  };
+
+  const removedReasonLabel = row => {
+    const reason = row.disqualification_reason || "";
+    if (row.status === "stopped_out") return "Price broke below stop loss";
+    if (reason.toLowerCase().includes("score")) return "Score dropped below 60";
+    return reason || "Removed after quality check";
+  };
+
   const setups   = ["All", ...new Set(results.map(r => r.setup).filter(Boolean))];
   const filtered = results
     .filter(r => filterSetup === "All" || r.setup === filterSetup)
@@ -659,6 +684,18 @@ function ScreenerPage({ onScanComplete, readOnly = false }) {
         )}
         {!loading && progress && <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 8 }}>{progress}</div>}
         {errMsg && <div className="err-box" style={{ marginTop: 10, marginBottom: 0 }}>{errMsg}</div>}
+        {qualityRefresh?.last_checked_at && (
+          <div className="ok-box" style={{ marginTop: 10, marginBottom: 0, display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+            <span>
+              Last quality check: {formatEtTime(qualityRefresh.last_checked_at)} ET. {qualityRefresh.removed_count || 0} ticker{qualityRefresh.removed_count === 1 ? "" : "s"} removed because they no longer met the score rule or broke stop loss.
+            </span>
+            {removedResults.length > 0 && (
+              <button className="btn btn-ghost" style={{ padding: "4px 9px", fontSize: 10 }} onClick={() => setShowRemoved(v => !v)}>
+                {showRemoved ? "Hide removed tickers" : "View removed tickers"}
+              </button>
+            )}
+          </div>
+        )}
         <div style={{ marginTop: 10, fontSize: 11, color: "var(--muted)" }}>
           💡 <b>Tip:</b> Type <b>AAPL MSFT NVDA</b> for a quick 3-stock test first.
         </div>
@@ -666,7 +703,7 @@ function ScreenerPage({ onScanComplete, readOnly = false }) {
 
       {filtered.length > 0 && (
         <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
-          <span style={{ fontSize: 11, color: "var(--muted)" }}>{filtered.length} results</span>
+          <span style={{ fontSize: 11, color: "var(--muted)" }}>Active Screener List · {filtered.length} results</span>
           {setups.map(s => (
             <button key={s} onClick={() => setFilterSetup(s)} className="btn btn-ghost" style={{ padding: "3px 10px", fontSize: 10, ...(filterSetup === s ? { borderColor: "var(--green)", color: "var(--green)" } : {}) }}>{s}</button>
           ))}
@@ -674,6 +711,38 @@ function ScreenerPage({ onScanComplete, readOnly = false }) {
             {[["score", "Score"], ["winrate", "Win Rate"], ["price", "Price"]].map(([k, l]) => (
               <button key={k} onClick={() => setSortBy(k)} className="btn btn-ghost" style={{ padding: "3px 10px", fontSize: 10, ...(sortBy === k ? { borderColor: "var(--blue)", color: "var(--blue)" } : {}) }}>{l}</button>
             ))}
+          </div>
+        </div>
+      )}
+
+      {showRemoved && removedResults.length > 0 && (
+        <div className="card" style={{ padding: 0, marginBottom: 14, borderColor: "rgba(251,176,36,0.28)" }}>
+          <div style={{ padding: "12px 14px", borderBottom: "1px solid var(--border2)" }}>
+            <div className="section-title">Removed after quality check</div>
+            <div className="section-sub">These tickers are kept for transparency and are not active setups.</div>
+          </div>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr><th>Ticker</th><th>Removed time</th><th>Reason</th><th>Previous score</th><th>Latest score</th><th>Current price</th><th>Stop loss</th></tr>
+              </thead>
+              <tbody>
+                {removedResults.map((r, i) => {
+                  const displayPrice = r.current_price ?? r.price ?? r.scan_price;
+                  return (
+                    <tr key={`${r.ticker}-${i}`} style={{ opacity: 0.78 }}>
+                      <td style={{ fontWeight: 700, fontSize: 13 }}>{r.ticker}</td>
+                      <td>{formatEtTime(r.disqualified_at || r.rescored_at)} ET</td>
+                      <td><span className="tag" style={{ color: "var(--amber)", borderColor: "rgba(251,176,36,0.28)" }}>{removedReasonLabel(r)}</span></td>
+                      <td>{r.previous_score ?? r.score ?? "-"}</td>
+                      <td>{r.latest_score ?? "-"}</td>
+                      <td>{displayPrice == null || displayPrice === "" ? "-" : `$${typeof displayPrice === "number" ? displayPrice.toFixed(2) : displayPrice}`}</td>
+                      <td>{r.stop_loss ?? r.stop ? `$${Number(r.stop_loss ?? r.stop).toFixed(2)}` : "-"}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
