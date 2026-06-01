@@ -26,7 +26,11 @@ const api = async (path, opts = {}) => {
       ...opts,
     });
     const json = await r.json().catch(() => ({}));
-    if (!r.ok) return { data: null, error: json?.detail || `Server error ${r.status}` };
+    if (!r.ok) {
+      const detail = json?.detail;
+      const message = typeof detail === "string" ? detail : detail?.detail || json?.message || `Server error ${r.status}`;
+      return { data: json, error: message };
+    }
     return { data: json, error: null };
   } catch (e) {
     return { data: null, error: `Cannot reach backend: ${e.message}` };
@@ -551,6 +555,157 @@ function DashboardPage({ positions, screenerResults, alerts }) {
 }
 
 // ─── Screener ─────────────────────────────────────────────────────────────────
+function SingleTickerCheck({ guest = false }) {
+  const [ticker, setTicker] = useState("");
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [remaining, setRemaining] = useState(null);
+  const [limitReached, setLimitReached] = useState(false);
+
+  const checkTicker = async () => {
+    const symbol = ticker.trim().toUpperCase();
+    if (!symbol || loading || limitReached) return;
+    setLoading(true);
+    setError("");
+    const { data, error } = await api("/api/screener/single", {
+      method: "POST",
+      body: JSON.stringify({ ticker: symbol }),
+    });
+    setLoading(false);
+    if (error) {
+      setResult(null);
+      setError(error);
+      if (data?.limit_reached) setLimitReached(true);
+      return;
+    }
+    setResult(data);
+    if (typeof data?.guest_scans_remaining === "number") setRemaining(data.guest_scans_remaining);
+  };
+
+  const score = result?.score?.score ?? result?.score;
+  const setup = result?.score?.setup ?? result?.setup;
+  const price = result?.quote?.price ?? result?.price ?? result?.current_price;
+
+  return (
+    <div className="card" style={{ marginBottom: 14 }}>
+      <div className="card-title">{guest ? "Type stock ticker to check" : "Check Single Ticker"}</div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <input
+          className="input"
+          value={ticker}
+          onChange={e => setTicker(e.target.value)}
+          onKeyDown={e => e.key === "Enter" && checkTicker()}
+          placeholder="Type stock ticker to check"
+          style={{ flex: "1 1 220px" }}
+          disabled={limitReached}
+        />
+        <button className="btn btn-blue" onClick={checkTicker} disabled={loading || limitReached}>
+          {loading ? "Checking..." : "Check"}
+        </button>
+      </div>
+      {guest && remaining !== null && !limitReached && (
+        <div style={{ marginTop: 8, fontSize: 11, color: "var(--muted)" }}>Guest scans left today: {remaining}/20</div>
+      )}
+      {error && <div className="err-box" style={{ marginTop: 10 }}>{error}</div>}
+      {result && (
+        <div style={{ marginTop: 12, padding: 12, background: "var(--bg3)", borderRadius: 8, border: "1px solid var(--border2)" }}>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+            <b style={{ fontFamily: "var(--mono)", fontSize: 16 }}>{result.ticker || ticker.toUpperCase()}</b>
+            {score !== undefined && <span className="badge" style={{ color: SCORE_COLOR(score), borderColor: SCORE_COLOR(score) }}>Score {score}</span>}
+            {setup && <span className="badge">{setup}</span>}
+            {price && <span style={{ fontFamily: "var(--mono)", fontSize: 13 }}>${Number(price).toFixed(2)}</span>}
+          </div>
+          {result.analysis && (
+            <div style={{ marginTop: 10, fontSize: 13, lineHeight: 1.6, color: "var(--text2)", whiteSpace: "pre-wrap" }}>{result.analysis}</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function GuestScreenerPage() {
+  const [board, setBoard] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [openAi, setOpenAi] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    api("/api/screener/public-results").then(({ data, error }) => {
+      if (cancelled) return;
+      if (error) setError(error);
+      if (data) setBoard(data);
+      setLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  const rows = board?.results || [];
+  const meta = board?.metadata || {};
+  const scannedAt = meta.scanned_at ? new Date(meta.scanned_at).toLocaleString() : "Latest scheduled scan";
+  const fallbackAi = "This ticker matched SwingAI's setup-quality rules during the latest scheduled scan. Review the chart and risk level before making any trading decision.";
+
+  return (
+    <div className="fade-up">
+      <SingleTickerCheck guest />
+      <div className="card" style={{ background: "#080C10", borderColor: "rgba(148,163,184,0.28)", boxShadow: "0 18px 50px rgba(0,0,0,0.28)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
+          <div>
+            <div style={{ fontSize: 22, fontWeight: 800 }}>Good quality tickers today</div>
+            <p style={{ color: "var(--text2)", fontSize: 13, lineHeight: 1.6, maxWidth: 760, margin: "8px 0 0" }}>
+              This list is updated after the 9:30 AM and 1:00 PM ET market scans. SwingAI scans today's trending tickers and keeps only setups that pass the quality score rule. Guest view shows a fixed scan snapshot, so prices are not live-updated here.
+            </p>
+          </div>
+          <div style={{ minWidth: 220, fontSize: 12, color: "var(--text2)", lineHeight: 1.8 }}>
+            <div><b>Scanned:</b> {scannedAt}</div>
+            <div><b>Session:</b> {meta.scan_session || "Latest scheduled scan"}</div>
+            <div><b>Scanned tickers:</b> {meta.tickers_scanned ?? "n/a"}</div>
+            <div><b>Passed score rule:</b> {meta.passed_count ?? rows.length}</div>
+            <div><b>Setups:</b> {(meta.setup_types || []).join(", ") || "n/a"}</div>
+          </div>
+        </div>
+        <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 12 }}>Scan results are for research only and are not financial advice.</div>
+        {error && <div className="err-box">{error}</div>}
+        {loading ? (
+          <div className="empty">Loading public screener board...</div>
+        ) : rows.length === 0 ? (
+          <div className="empty">No guest screener results are available yet.</div>
+        ) : (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Ticker</th><th>Setup</th><th>Score</th><th>Scan Price</th><th>Target</th><th>Stop</th><th>AI</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map(r => (
+                  <tr key={r.ticker}>
+                    <td style={{ fontFamily: "var(--mono)", fontWeight: 700 }}>{r.ticker}</td>
+                    <td>{r.setup || "-"}</td>
+                    <td style={{ color: SCORE_COLOR(r.score || 0), fontWeight: 700 }}>{r.score ?? "-"}</td>
+                    <td>{r.scan_price ? `$${Number(r.scan_price).toFixed(2)}` : "-"}</td>
+                    <td>{r.target ? `$${Number(r.target).toFixed(2)}` : "-"}</td>
+                    <td>{r.stop ? `$${Number(r.stop).toFixed(2)}` : "-"}</td>
+                    <td><button className="btn btn-blue" style={{ padding: "4px 8px", fontSize: 10 }} onClick={() => setOpenAi(openAi === r.ticker ? null : r.ticker)}>AI</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {openAi && (
+              <div style={{ marginTop: 12, padding: 12, borderRadius: 8, background: "rgba(77,166,255,0.08)", border: "1px solid rgba(77,166,255,0.24)", fontSize: 13, lineHeight: 1.6 }}>
+                {(rows.find(r => r.ticker === openAi)?.ai_summary) || fallbackAi}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function ScreenerPage({ onScanComplete, readOnly = false }) {
   const [results, setResults]     = useState([]);
   const [removedResults, setRemovedResults] = useState([]);
@@ -661,6 +816,8 @@ function ScreenerPage({ onScanComplete, readOnly = false }) {
 
   return (
     <div className="fade-up">
+      <SingleTickerCheck />
+
       <div className="card" style={{ marginBottom: 14 }}>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
           <div style={{ flex: 1, minWidth: 200 }}>
@@ -1441,7 +1598,7 @@ function GuestReadOnlyPage() {
             {guestTab === "screener" ? (
               <div className={showLogin ? "grid-2" : undefined} style={{ gap: 12, alignItems: "start" }}>
                 <div>
-                  <ScreenerPage readOnly />
+                  <GuestScreenerPage />
                   <button className="guest-footer-link" type="button" onClick={() => setShowTerms(true)}>Terms &amp; Disclaimer</button>
                 </div>
                 {showLogin && <LoginPage embedded />}
