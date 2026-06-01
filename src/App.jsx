@@ -184,6 +184,21 @@ const css = `
   .modal { background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 24px; width: min(520px, 100%); max-height: calc(100vh - 32px); overflow-y: auto; box-shadow: 0 20px 80px rgba(0,0,0,0.5); }
   .modal-title { font-size: 16px; font-weight: 700; margin-bottom: 16px; }
   .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
+  .guest-disclaimer-overlay { position: fixed; inset: 0; z-index: 200; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(0,0,0,0.78); backdrop-filter: blur(6px); }
+  .guest-disclaimer-modal { width: min(860px, 100%); max-height: calc(100vh - 32px); overflow-y: auto; background: var(--bg2); border: 1px solid rgba(251,176,36,0.28); border-radius: 8px; padding: clamp(20px, 4vw, 30px); box-shadow: 0 24px 80px rgba(0,0,0,0.55); }
+  .guest-disclaimer-kicker { color: var(--amber); font-size: 10px; font-weight: 800; letter-spacing: 1.1px; text-transform: uppercase; margin-bottom: 10px; }
+  .guest-disclaimer-title { font-size: clamp(18px, 3vw, 24px); font-weight: 800; margin-bottom: 12px; }
+  .guest-disclaimer-text { display: grid; gap: 10px; color: var(--text2); font-size: 13px; line-height: 1.6; }
+  .guest-warning-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0; }
+  .guest-warning-badge { display: inline-flex; align-items: center; min-height: 24px; padding: 4px 9px; border-radius: 999px; color: var(--amber); background: rgba(251,176,36,0.10); border: 1px solid rgba(251,176,36,0.28); font-size: 10px; font-weight: 800; letter-spacing: .4px; }
+  .guest-checks { display: grid; gap: 9px; margin: 16px 0; }
+  .guest-check { display: grid; grid-template-columns: 18px 1fr; gap: 10px; align-items: start; padding: 11px 12px; border-radius: 8px; background: var(--bg3); border: 1px solid var(--border2); color: var(--text2); font-size: 12px; line-height: 1.4; }
+  .guest-check input { width: 16px; height: 16px; accent-color: var(--green); margin-top: 1px; }
+  .guest-terms { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border2); color: var(--text2); font-size: 12px; line-height: 1.65; }
+  .guest-terms h3 { color: var(--text); font-size: 16px; margin-bottom: 8px; }
+  .guest-terms h4 { color: var(--text); font-size: 13px; margin: 16px 0 6px; }
+  .guest-terms p { margin-bottom: 8px; }
+  .guest-footer-link { margin-top: 14px; padding: 0; border: 0; background: transparent; color: var(--blue); font: inherit; font-size: 11px; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 
   .alert-card { background: var(--bg3); border: 1px solid var(--border2); border-radius: 8px; padding: 12px 14px; margin-bottom: 8px; }
   .alert-buy  { border-left: 3px solid var(--green); }
@@ -224,6 +239,9 @@ const css = `
     table { min-width: 720px; }
     th { padding: 9px 10px; }
     td { padding: 10px; }
+    .guest-disclaimer-modal { padding: 18px; }
+    .guest-disclaimer-overlay .modal-actions { justify-content: stretch; }
+    .guest-disclaimer-overlay .modal-actions .btn { flex: 1; }
   }
 `;
 
@@ -281,6 +299,121 @@ function PriceReliabilityBadge({ position }) {
     >
       entry fallback
     </span>
+  );
+}
+
+const GUEST_DISCLAIMER_CHECKS = [
+  "I understand this website is for educational and informational purposes only.",
+  "I understand this is not financial advice.",
+  "I understand I am fully responsible for my own trading and investment decisions.",
+  "I agree to the Terms of Use and Disclaimer.",
+];
+
+const TERMS_SECTIONS = [
+  ["1. Public Guest-View Website Only", "This website provides a public guest-view display of selected AI stock scanner information. Guest users may view certain scanner results and general market-related information. Guest users cannot access private admin features, portfolio information, trading accounts, alerts, API settings, user accounts, or any restricted dashboard areas. We may change, limit, suspend, or remove guest-view access at any time without notice."],
+  ["2. Educational and Informational Use Only", "All content on this website is provided for educational and informational purposes only. The website may display tickers, AI scanner scores, technical setups, indicator summaries, watchlist entries, price-related information, change percentages, risk levels, target zones, stop zones, model confidence estimates, AI-generated explanations, and last scanned time. This information is general in nature and does not consider your financial situation, objectives, risk tolerance, investment knowledge, tax situation, or personal circumstances."],
+  ["3. No Financial Advice", "Nothing on this website is financial, investment, trading, legal, tax, accounting, or professional advice. Nexus Milestone Inc. does not recommend that you buy, sell, hold, short, trade, or invest in any security, stock, option, ETF, cryptocurrency, derivative, financial product, or investment. Any scanner result, score, setup, target zone, stop zone, confidence estimate, or AI explanation is a general informational output only and is not a personalized recommendation."],
+  ["4. No Advisor, Broker, Dealer, or Fiduciary Relationship", "Your use of this website does not create any advisor-client, broker-client, dealer-client, fiduciary, professional, agency, partnership, joint venture, or employment relationship between you and Nexus Milestone Inc. Nexus Milestone Inc. does not manage money, execute trades, provide brokerage services, provide portfolio management, or make investment decisions for users. You are solely responsible for all decisions you make."],
+  ["5. Trading and Investment Risk", "Trading and investing involve risk. You understand and agree that you can lose money, you can lose your entire investment, market prices can change quickly, scanner results can be wrong, AI analysis can be wrong, technical indicators can fail, target zones and stop zones are not guarantees, model confidence or win-rate estimates are not promises of profit, past performance does not guarantee future results, and market data may be delayed, incomplete, inaccurate, or unavailable."],
+  ["6. Delayed and Inaccurate Data Risk", "The website may use market data from third-party sources, APIs, brokers, exchanges, or public information sources. Information shown may be delayed, incomplete, inaccurate, unavailable, or different from prices or data shown by your broker or other sources. You must verify all prices, quotes, and trading information directly with your broker or another reliable source before making any decision."],
+  ["7. AI-Generated Content", "The website may use artificial intelligence, algorithms, automation, scoring models, or third-party AI tools. AI-generated content may be inaccurate, incomplete, outdated, biased, unsuitable, or misleading. You agree not to rely on AI-generated content as financial advice or guaranteed truth. Nexus Milestone Inc. does not guarantee the accuracy, completeness, reliability, usefulness, or suitability of any AI-generated content."],
+  ["8. No Guarantee of Results", "Nexus Milestone Inc. does not guarantee profits, trading success, investment returns, accuracy of scanner results, accuracy of AI analysis, accuracy of market data, future performance, identification of winning trades, avoidance of losing trades, continuous website availability, or any specific financial result."],
+  ["9. User Responsibility", "You are solely responsible for your own financial decisions, research, risk management, broker account activity, tax consequences, investment gains or losses, verifying information before relying on it, and complying with applicable laws and regulations. You agree that you will not rely on this website as your only source of information."],
+  ["10. Third-Party Services and Links", "This website may contain information from, references to, or links to third-party services, APIs, websites, market data providers, news sources, brokers, advertisers, or external content. Nexus Milestone Inc. does not control third-party services and is not responsible for their accuracy, availability, policies, actions, content, or failures."],
+  ["11. Advertising and Sponsored Content", "This website may display advertisements, affiliate links, sponsored content, or promotional material. Advertisements or sponsored content do not represent financial advice, investment advice, endorsement, or recommendation by Nexus Milestone Inc. You are responsible for evaluating any advertiser, product, service, or offer before using it."],
+  ["12. Acceptable Use", "You agree not to copy, scrape, reproduce, or redistribute website content without permission; use automated bots or scraping tools against the website; attempt to access private admin areas; attempt to bypass security controls; misuse scanner results as guaranteed recommendations; republish content as your own financial advice; use the website for unlawful purposes; or interfere with website operation or security."],
+  ["13. Intellectual Property", "All website content, design, layout, scanner presentation, AI-generated summaries, branding, text, software, workflows, and related materials are owned by or licensed to Nexus Milestone Inc., unless otherwise stated. You may view the website for personal informational use only."],
+  ["14. No Warranties", "The website and all content are provided on an as is and as available basis. To the maximum extent permitted by law, Nexus Milestone Inc. disclaims all warranties, representations, and conditions, whether express, implied, statutory, or otherwise, including warranties of accuracy, completeness, reliability, merchantability, fitness for a particular purpose, non-infringement, uninterrupted operation, security, and error-free performance."],
+  ["15. Limitation of Liability", "To the maximum extent permitted by law, Nexus Milestone Inc., its directors, officers, shareholders, employees, contractors, developers, affiliates, service providers, and licensors will not be liable for any direct, indirect, incidental, consequential, special, punitive, exemplary, or other damages arising from or related to your use of this website, including trading losses, investment losses, lost profits, lost opportunities, incorrect scanner results, incorrect AI analysis, market data errors, delayed information, software errors, website outages, third-party service failures, or decisions made after viewing the website. If liability cannot be fully excluded, total liability will be limited to CAD $100."],
+  ["16. Indemnification", "You agree to indemnify, defend, and hold harmless Nexus Milestone Inc., its directors, officers, shareholders, employees, contractors, developers, affiliates, service providers, and licensors from any claims, losses, damages, liabilities, costs, expenses, or demands arising from your use of the website, your trading or investment decisions, your violation of these Terms, your misuse of scanner results, your violation of laws or regulations, your unauthorized copying, scraping, sharing, or redistribution of website content, or any claim made by another person based on your use or sharing of website content."],
+  ["17. Privacy and Analytics", "We may collect limited technical and usage information, such as IP address, device information, browser type, approximate location, pages viewed, timestamps, cookie data, analytics data, and disclaimer acceptance records. This information may be used to operate the website, improve the service, protect security, analyze usage, prevent abuse, and maintain legal records."],
+  ["18. Changes to These Terms", "Nexus Milestone Inc. may update these Terms at any time. The updated version will be posted on this website with a new effective date. Continued use of the website after changes are posted means you accept the updated Terms."],
+  ["19. Governing Law", "These Terms are governed by the laws of the Province of Ontario and the federal laws of Canada applicable therein. Any dispute relating to these Terms or the website will be handled in the courts located in Ontario, Canada, unless applicable law requires otherwise."],
+  ["20. Final Acknowledgement", "By using this website, you confirm that you understand this website is for educational and informational purposes only; Nexus Milestone Inc. does not provide financial advice; scanner results are not recommendations; market data and AI outputs may be inaccurate or delayed; trading and investing involve risk; you accept full responsibility for your own decisions; and you agree not to hold Nexus Milestone Inc. responsible for trading losses, investment losses, missed opportunities, or decisions made after using this website. If you do not agree, you must stop using this website immediately."],
+];
+
+function TermsContent() {
+  return (
+    <div className="guest-terms">
+      <h3>Website Terms of Use and Disclaimer</h3>
+      <p><b>Effective Date:</b> May 31, 2026</p>
+      <p><b>Company:</b> Nexus Milestone Inc.</p>
+      <p><b>Website/App Name:</b> SwingAI</p>
+      <p><b>Contact:</b> [Insert Email]</p>
+      <p>These Website Terms of Use and Disclaimer apply to your access to and use of the public guest-view website, scanner results, AI-generated analysis, watchlists, tables, reports, charts, content, and related information provided by Nexus Milestone Inc. ("Nexus Milestone," "we," "us," or "our").</p>
+      <p>By accessing or using this website, you agree to these Terms. If you do not agree, do not use this website.</p>
+      {TERMS_SECTIONS.map(([title, text]) => (
+        <section key={title}>
+          <h4>{title}</h4>
+          <p>{text}</p>
+        </section>
+      ))}
+    </div>
+  );
+}
+
+function GuestDisclaimerModal({ readOnlyTerms = false, onAccept, onClose }) {
+  const [checks, setChecks] = useState(() => GUEST_DISCLAIMER_CHECKS.map(() => false));
+  const [showTerms, setShowTerms] = useState(readOnlyTerms);
+  const allChecked = checks.every(Boolean);
+
+  const accept = () => {
+    const acceptedAt = new Date().toISOString();
+    localStorage.setItem("guestDisclaimerAccepted", "true");
+    localStorage.setItem("guestDisclaimerAcceptedAt", acceptedAt);
+    // TODO: Add backend acceptance logging if a database table/API is added.
+    onAccept?.(acceptedAt);
+  };
+
+  return (
+    <div className="guest-disclaimer-overlay" role="dialog" aria-modal="true" aria-labelledby="guest-disclaimer-title">
+      <div className="guest-disclaimer-modal">
+        <div className="guest-disclaimer-kicker">Important Disclaimer</div>
+        <div id="guest-disclaimer-title" className="guest-disclaimer-title">Before viewing this AI stock scanner, please read and agree.</div>
+        <div className="guest-disclaimer-text">
+          <p>This website is operated by Nexus Milestone Inc. and provides general AI-generated stock scanner results for educational and informational purposes only.</p>
+          <p>This website does not provide financial advice, investment advice, trading advice, legal advice, tax advice, or portfolio management services. Nexus Milestone Inc. is not your financial advisor, broker, dealer, portfolio manager, or fiduciary.</p>
+          <p>The scanner may show tickers, scores, setups, indicators, price-related information, target zones, stop zones, risk levels, confidence estimates, and AI-generated explanations. These are general scanner outputs only. They are not instructions or recommendations to buy, sell, hold, short, trade, or invest in any security.</p>
+          <p>Prices and data may be delayed, incomplete, inaccurate, or different from your broker or other data sources. AI analysis and scanner results may be wrong, outdated, incomplete, or unsuitable for your situation.</p>
+          <p>Stock trading and investing involve risk. You can lose money, including your entire investment. Past performance, AI scores, scanner results, technical indicators, model confidence, or historical patterns do not guarantee future results.</p>
+          <p>By continuing, you agree that you will make your own independent decisions, verify all information yourself, and accept full responsibility for your own trading and investment decisions. You agree not to hold Nexus Milestone Inc., its owners, directors, officers, employees, contractors, developers, affiliates, or service providers responsible for any trading losses, investment losses, missed opportunities, data errors, software errors, AI errors, API failures, delayed information, or decisions you make after viewing this website.</p>
+        </div>
+
+        <div className="guest-warning-row" aria-label="Key warnings">
+          <span className="guest-warning-badge">Last scanned prices may be delayed</span>
+          <span className="guest-warning-badge">Scanner results are not recommendations</span>
+          <span className="guest-warning-badge">Not financial advice</span>
+        </div>
+
+        {!readOnlyTerms && (
+          <div className="guest-checks">
+            {GUEST_DISCLAIMER_CHECKS.map((label, index) => (
+              <label className="guest-check" key={label}>
+                <input
+                  type="checkbox"
+                  checked={checks[index]}
+                  onChange={e => setChecks(prev => prev.map((checked, i) => i === index ? e.target.checked : checked))}
+                />
+                <span>{label}</span>
+              </label>
+            ))}
+          </div>
+        )}
+
+        <div className="modal-actions">
+          {readOnlyTerms ? (
+            <button className="btn btn-ghost" onClick={onClose}>Back to Screener</button>
+          ) : (
+            <>
+              <button className="btn btn-ghost" onClick={() => setShowTerms(v => !v)}>{showTerms ? "Hide Terms" : "Read More"}</button>
+              <button className="btn btn-green" onClick={accept} disabled={!allChecked}>I Understand and Agree</button>
+            </>
+          )}
+        </div>
+
+        {showTerms && <TermsContent />}
+      </div>
+    </div>
   );
 }
 
@@ -545,10 +678,12 @@ function ScreenerPage({ onScanComplete, readOnly = false }) {
                 <tr><th>Ticker</th><th>Price</th><th>Chg%</th><th>Score</th><th>Win Rate</th><th>Setup</th><th>RSI</th><th>Vol</th><th>Target</th><th>Stop</th><th>Actions</th></tr>
               </thead>
               <tbody>
-                {filtered.map((r, i) => (
+                {filtered.map((r, i) => {
+                  const displayPrice = r.current_price ?? r.price ?? r.scan_price;
+                  return (
                   <tr key={i}>
                     <td style={{ fontWeight: 700, fontSize: 13 }}>{r.ticker}</td>
-                    <td>${typeof r.price === "number" ? r.price.toFixed(2) : r.price}</td>
+                    <td>{displayPrice == null || displayPrice === "" ? "-" : `$${typeof displayPrice === "number" ? displayPrice.toFixed(2) : displayPrice}`}</td>
                     <td><span style={{ color: (r.change_pct || 0) >= 0 ? "var(--green)" : "var(--red)" }}>{(r.change_pct || 0) >= 0 ? "+" : ""}{(r.change_pct || 0).toFixed(2)}%</span></td>
                     <td><ScoreGauge score={r.score} /></td>
                     <td><span style={{ color: SCORE_COLOR(r.score), fontWeight: 700 }}>{r.win_rate}%</span></td>
@@ -566,7 +701,8 @@ function ScreenerPage({ onScanComplete, readOnly = false }) {
                       </div>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -1186,6 +1322,8 @@ function SettingsPage() {
 function GuestReadOnlyPage() {
   const [guestTab, setGuestTab] = useState("screener");
   const [showLogin, setShowLogin] = useState(false);
+  const [disclaimerAccepted, setDisclaimerAccepted] = useState(() => localStorage.getItem("guestDisclaimerAccepted") === "true");
+  const [showTerms, setShowTerms] = useState(false);
   const tabs = [
     { id: "dashboard", label: "DASHBOARD", locked: true },
     { id: "screener",  label: "SCREENER",  locked: false },
@@ -1227,6 +1365,7 @@ function GuestReadOnlyPage() {
               <div className={showLogin ? "grid-2" : undefined} style={{ gap: 12, alignItems: "start" }}>
                 <div>
                   <ScreenerPage readOnly />
+                  <button className="guest-footer-link" type="button" onClick={() => setShowTerms(true)}>Terms &amp; Disclaimer</button>
                 </div>
                 {showLogin && <LoginPage embedded />}
               </div>
@@ -1243,6 +1382,12 @@ function GuestReadOnlyPage() {
           </div>
         </main>
       </div>
+      {!disclaimerAccepted && (
+        <GuestDisclaimerModal onAccept={() => setDisclaimerAccepted(true)} />
+      )}
+      {showTerms && (
+        <GuestDisclaimerModal readOnlyTerms onClose={() => setShowTerms(false)} />
+      )}
     </>
   );
 }
