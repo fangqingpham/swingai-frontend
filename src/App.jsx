@@ -586,6 +586,10 @@ function SingleTickerCheck({ guest = false }) {
   const score = result?.score?.score ?? result?.score;
   const setup = result?.score?.setup ?? result?.setup;
   const price = result?.quote?.price ?? result?.price ?? result?.current_price;
+  const stop = result?.stop_loss ?? result?.stop;
+  const volumeRatio = result?.volume_ratio ?? result?.vol_ratio;
+  const formatMoney = value => value == null || value === "" ? "-" : `$${Number(value).toFixed(2)}`;
+  const formatNumber = value => value == null || value === "" ? "-" : Number(value).toFixed(2);
 
   return (
     <div className="card" style={{ marginBottom: 14 }}>
@@ -616,6 +620,28 @@ function SingleTickerCheck({ guest = false }) {
             {setup && <span className="badge">{setup}</span>}
             {price && <span style={{ fontFamily: "var(--mono)", fontSize: 13 }}>${Number(price).toFixed(2)}</span>}
           </div>
+          <div className="table-wrap" style={{ marginTop: 12 }}>
+            <table>
+              <thead>
+                <tr><th>Price</th><th>Chg%</th><th>RSI</th><th>Vol Ratio</th><th>Target</th><th>Stop Loss</th><th>R:R</th><th>Source</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>{formatMoney(result.current_price ?? result.price ?? result.scan_price)}</td>
+                  <td>{result.change_pct == null ? "-" : `${Number(result.change_pct).toFixed(2)}%`}</td>
+                  <td>{formatNumber(result.rsi)}</td>
+                  <td>{volumeRatio == null ? "-" : `${Number(volumeRatio).toFixed(2)}x`}</td>
+                  <td>{formatMoney(result.target)}</td>
+                  <td>{formatMoney(stop)}</td>
+                  <td>{result.risk_reward == null ? "-" : `1:${Number(result.risk_reward).toFixed(2)}`}</td>
+                  <td>{result.data_source || "-"}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          {result.signals?.length > 0 && (
+            <div className="signals-list" style={{ marginTop: 10 }}>{result.signals.map((s, i) => <span key={i} className="signal-pill">{s}</span>)}</div>
+          )}
           {result.analysis && (
             <div style={{ marginTop: 10, fontSize: 13, lineHeight: 1.6, color: "var(--text2)", whiteSpace: "pre-wrap" }}>{result.analysis}</div>
           )}
