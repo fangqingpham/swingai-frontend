@@ -565,11 +565,19 @@ function ScreenerPage({ onScanComplete, readOnly = false }) {
   const [analyzeLoading, setAnalyzeLoading] = useState(false);
   const [alertSent, setAlertSent] = useState({});
 
-  useEffect(() => {
-    api("/api/screener/results").then(({ data }) => {
-      if (data?.results?.length) setResults(data.results);
-    });
+  const loadScreenerResults = useCallback(async () => {
+    const { data } = await api("/api/screener/results");
+    if (data?.results?.length) setResults(data.results);
   }, []);
+
+  useEffect(() => {
+    if (!loading) loadScreenerResults();
+    const refresh = () => {
+      if (!loading) loadScreenerResults();
+    };
+    const refreshInterval = setInterval(refresh, 60000);
+    return () => clearInterval(refreshInterval);
+  }, [loadScreenerResults, loading]);
 
   const runScan = async () => {
     if (readOnly) return;
