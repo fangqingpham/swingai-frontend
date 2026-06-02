@@ -4,6 +4,7 @@ import {
   LineChart, Line, AreaChart, Area, BarChart, Bar,
   XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine,
 } from "recharts";
+import heroBg from "./assets/swingai-hero-bg.jpg";
 
 // ─── Config ─────────────────────────────────────────────────────────────────
 const API_URL = import.meta.env.VITE_API_URL || "https://swingai-api-production.up.railway.app";
@@ -219,11 +220,53 @@ const css = `
 
   .grid-2.gap-3 { gap: 12px; }
 
+  .screener-hero { position: relative; overflow: hidden; margin-bottom: 16px; padding: clamp(22px, 4vw, 34px); border-radius: 8px; border: 1px solid rgba(77,166,255,0.18); background-image: linear-gradient(90deg, rgba(5,11,18,0.96) 0%, rgba(6,16,26,0.93) 34%, rgba(6,18,29,0.66) 58%, rgba(5,11,18,0.26) 100%), radial-gradient(circle at 76% 46%, rgba(0,255,178,0.12), transparent 31%), var(--hero-bg); background-size: cover; background-position: center right; box-shadow: 0 18px 48px rgba(0,0,0,0.28); isolation: isolate; }
+  .screener-hero::before { content: ""; position: absolute; inset: -35%; background: radial-gradient(circle at 78% 44%, rgba(0,255,178,0.10), transparent 24%), linear-gradient(120deg, transparent 20%, rgba(77,166,255,0.08), rgba(0,255,178,0.08), transparent 78%); transform: translateX(-18%); animation: heroGlow 18s ease-in-out infinite alternate; z-index: -3; }
+  .screener-hero::after { content: ""; position: absolute; inset: 0; background: linear-gradient(100deg, transparent 0%, rgba(255,255,255,0.055) 46%, rgba(255,255,255,0.12) 50%, rgba(255,255,255,0.035) 54%, transparent 100%); transform: translateX(-110%); animation: heroShimmer 8s ease-in-out infinite; z-index: -1; pointer-events: none; }
+  .hero-grid { position: absolute; inset: 0; opacity: .20; z-index: -2; background-image: linear-gradient(rgba(77,166,255,0.075) 1px, transparent 1px), linear-gradient(90deg, rgba(0,255,178,0.045) 1px, transparent 1px); background-size: 58px 44px; mask-image: linear-gradient(90deg, transparent 0%, black 24%, black 96%); }
+  .hero-market-scene { position: absolute; inset: 0; opacity: .72; z-index: -1; overflow: hidden; background: transparent; box-shadow: none; pointer-events: none; mask-image: linear-gradient(90deg, transparent 0%, rgba(0,0,0,0.16) 34%, rgba(0,0,0,0.72) 56%, black 100%); }
+  .hero-market-scene::before { content: ""; position: absolute; inset: 0; background-image: linear-gradient(rgba(77,166,255,0.055) 1px, transparent 1px), linear-gradient(90deg, rgba(0,255,178,0.035) 1px, transparent 1px); background-size: 48px 34px; opacity: .28; mask-image: linear-gradient(90deg, transparent 0%, rgba(0,0,0,0.25) 42%, black 100%); }
+  .hero-market-scene::after { content: ""; position: absolute; inset: 0; background: radial-gradient(circle at 76% 34%, rgba(0,255,178,0.11), transparent 30%); pointer-events: none; }
+  .hero-market-scene svg { position: absolute; top: 0; right: 0; width: min(54%, 640px); height: 100%; min-height: 190px; overflow: visible; }
+  .market-trend { fill: none; stroke: rgba(0,255,178,0.56); stroke-width: 2.2; stroke-linecap: round; stroke-dasharray: 540; stroke-dashoffset: 540; filter: drop-shadow(0 0 9px rgba(0,255,178,0.42)); animation: trendDraw 9s ease-in-out infinite; }
+  .market-trend-blue { fill: none; stroke: rgba(77,166,255,0.42); stroke-width: 1.6; stroke-linecap: round; stroke-dasharray: 500; stroke-dashoffset: 500; filter: drop-shadow(0 0 8px rgba(77,166,255,0.30)); animation: trendDraw 11s ease-in-out infinite reverse; }
+  .market-fill { fill: url(#heroTrendFill); opacity: .24; animation: marketLift 8s ease-in-out infinite; }
+  .market-dot { fill: rgba(0,255,178,0.72); filter: drop-shadow(0 0 7px rgba(0,255,178,0.45)); animation: linePulse 5s ease-in-out infinite; }
+  .market-dot:nth-of-type(2) { animation-delay: .8s; }
+  .market-dot:nth-of-type(3) { animation-delay: 1.6s; }
+  .hero-content { position: relative; z-index: 1; max-width: 760px; padding-right: 0; }
+  .hero-kicker { display: inline-flex; align-items: center; min-height: 22px; padding: 3px 9px; border-radius: 999px; border: 1px solid rgba(0,255,178,0.24); background: rgba(0,255,178,0.08); color: var(--green2); font-size: 10px; font-weight: 800; letter-spacing: .8px; text-transform: uppercase; margin-bottom: 12px; }
+  .hero-title { font-size: clamp(28px, 5vw, 48px); line-height: 1.02; font-weight: 800; letter-spacing: 0; color: var(--text); margin-bottom: 10px; }
+  .hero-subtitle { color: var(--text2); font-size: clamp(14px, 2vw, 17px); line-height: 1.55; max-width: 560px; margin-bottom: 16px; }
+  .hero-reminders { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 12px; max-width: 760px; margin: 16px 0 20px; }
+  .hero-reminder { display: flex; gap: 8px; align-items: flex-start; color: rgba(223,232,244,0.72); font-size: 12px; line-height: 1.45; }
+  .hero-reminder::before { content: ""; width: 6px; height: 6px; flex: 0 0 6px; margin-top: 6px; border-radius: 50%; background: var(--green); box-shadow: 0 0 10px rgba(0,255,178,0.52); }
+  .hero-cta { min-height: 38px; padding: 9px 16px; border-radius: 6px; border: 1px solid rgba(0,255,178,0.34); background: linear-gradient(135deg, rgba(0,255,178,0.18), rgba(77,166,255,0.16)); color: var(--green2); font-size: 12px; font-weight: 800; cursor: pointer; transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease; }
+  .hero-cta:hover { transform: translateY(-2px); border-color: rgba(0,255,178,0.58); box-shadow: 0 12px 28px rgba(0,255,178,0.13); }
+  .hero-chips { position: absolute; inset: 0; pointer-events: none; z-index: 0; }
+  .hero-chip { position: absolute; display: inline-flex; align-items: center; min-height: 24px; padding: 4px 9px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.10); background: rgba(13,17,24,0.64); backdrop-filter: blur(8px); color: rgba(246,248,251,0.72); font-family: var(--mono); font-size: 10px; font-weight: 700; box-shadow: 0 10px 30px rgba(0,0,0,0.22); animation: chipFloat 6s ease-in-out infinite; }
+  .hero-chip:nth-child(1) { top: 16%; right: 31%; animation-delay: 0s; }
+  .hero-chip:nth-child(2) { top: 13%; right: 8%; animation-delay: .8s; }
+  .hero-chip:nth-child(3) { top: 48%; right: 10%; animation-delay: 1.6s; }
+  .hero-chip:nth-child(4) { bottom: 20%; right: 29%; animation-delay: 2.4s; }
+  .hero-chip:nth-child(5) { bottom: 12%; right: 7%; animation-delay: 3.2s; }
+
+  @keyframes heroGlow { from { transform: translate3d(-18%, -2%, 0) rotate(0deg); opacity: .72; } to { transform: translate3d(12%, 4%, 0) rotate(6deg); opacity: 1; } }
+  @keyframes heroShimmer { 0%, 38% { transform: translateX(-115%); opacity: 0; } 48% { opacity: .72; } 64%, 100% { transform: translateX(115%); opacity: 0; } }
+  @keyframes trendDraw { 0% { stroke-dashoffset: 540; opacity: .18; } 34%, 70% { stroke-dashoffset: 0; opacity: .78; } 100% { stroke-dashoffset: -540; opacity: .24; } }
+  @keyframes marketLift { 0%,100% { transform: translateY(5px); opacity: .20; } 50% { transform: translateY(-4px); opacity: .44; } }
+  @keyframes linePulse { 0%,100% { opacity: .30; transform: scale(.82); } 50% { opacity: .86; transform: scale(1); } }
+  @keyframes chipFloat { 0%,100% { transform: translate3d(0,0,0); opacity: .66; } 50% { transform: translate3d(0,-7px,0); opacity: .95; } }
+
   @media (max-width: 900px) {
     .content { padding: 18px; }
     .grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .header { gap: 12px; }
     .header-right { gap: 8px; }
+    .hero-content { max-width: 720px; }
+    .hero-market-scene { opacity: .42; }
+    .hero-market-scene svg { width: 62%; }
+    .hero-chip:nth-child(4), .hero-chip:nth-child(5) { display: none; }
   }
   @media (max-width: 720px) {
     .header { flex-wrap: wrap; align-items: center; padding: 10px 14px; }
@@ -233,6 +276,12 @@ const css = `
     .section-header { align-items: flex-start; flex-direction: column; gap: 10px; }
     .section-header > div:last-child { width: 100%; }
     .modal-actions { flex-wrap: wrap; }
+    .screener-hero { padding: 22px 18px; }
+    .hero-reminders { grid-template-columns: 1fr; }
+    .hero-market-scene { display: block; opacity: .20; mask-image: linear-gradient(90deg, transparent 0%, rgba(0,0,0,0.22) 24%, black 100%); }
+    .hero-market-scene svg { width: 100%; }
+    .hero-chips { position: relative; display: flex; flex-wrap: wrap; gap: 7px; margin-top: 18px; }
+    .hero-chip { position: static; animation: chipFloat 7s ease-in-out infinite; }
   }
   @media (max-width: 640px) {
     .grid-2, .grid-4 { grid-template-columns: 1fr; }
@@ -246,6 +295,10 @@ const css = `
     .guest-disclaimer-modal { padding: 18px; }
     .guest-disclaimer-overlay .modal-actions { justify-content: stretch; }
     .guest-disclaimer-overlay .modal-actions .btn { flex: 1; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .screener-hero::before, .screener-hero::after, .market-trend, .market-trend-blue, .market-fill, .market-dot, .hero-chip, .hero-cta, .fade-up, .pulse, .spin { animation: none !important; transition: none !important; }
+    .hero-cta:hover { transform: none; }
   }
 `;
 
@@ -272,6 +325,60 @@ function ScoreGauge({ score }) {
       </div>
       <span style={{ fontFamily: "var(--mono)", fontWeight: 700, fontSize: 13, color, minWidth: 28 }}>{score}</span>
     </div>
+  );
+}
+
+function ScreenerHero() {
+  const focusTickerInput = () => {
+    const input = document.querySelector("[data-single-ticker-input='true']");
+    if (input) {
+      input.scrollIntoView({ behavior: "smooth", block: "center" });
+      setTimeout(() => input.focus(), 250);
+    }
+  };
+
+  const reminders = [
+    "Swing trading only - not for day trading or options",
+    "Best for traders with basic market knowledge",
+    "Daily picks come from the top 100 trending U.S. stocks",
+    "Need another stock? Type any ticker below",
+    "For reference only - always do your own research",
+  ];
+
+  return (
+    <section className="screener-hero" aria-label="SwingAI screener overview" style={{ "--hero-bg": `url(${heroBg})` }}>
+      <div className="hero-grid" />
+      <div className="hero-market-scene" aria-hidden="true">
+        <svg viewBox="0 0 460 240" role="presentation" focusable="false">
+          <defs>
+            <linearGradient id="heroTrendFill" x1="0" x2="0" y1="0" y2="1">
+              <stop offset="0%" stopColor="#00FFB2" stopOpacity="0.22" />
+              <stop offset="100%" stopColor="#4DA6FF" stopOpacity="0" />
+            </linearGradient>
+          </defs>
+          <path className="market-fill" d="M24 184 C62 172, 82 176, 116 154 S168 116, 202 134 S258 142, 292 108 S358 66, 436 78 L436 220 L24 220 Z" />
+          <path className="market-trend-blue" d="M18 150 C58 142, 88 156, 124 128 S176 92, 216 112 S270 124, 316 84 S374 58, 444 62" />
+          <path className="market-trend" d="M24 184 C62 172, 82 176, 116 154 S168 116, 202 134 S258 142, 292 108 S358 66, 436 78" />
+          <circle className="market-dot" cx="202" cy="134" r="3.8" />
+          <circle className="market-dot" cx="292" cy="108" r="3.8" />
+          <circle className="market-dot" cx="436" cy="78" r="4.4" />
+        </svg>
+      </div>
+      <div className="hero-content">
+        <div className="hero-kicker">SwingAI Screener</div>
+        <h1 className="hero-title">Trade Smart with SwingAI</h1>
+        <p className="hero-subtitle">AI analysis for medium-term U.S. stock trading</p>
+        <div className="hero-reminders">
+          {reminders.map(item => <div key={item} className="hero-reminder">{item}</div>)}
+        </div>
+        <button className="hero-cta" onClick={focusTickerInput}>Analyze a Stock</button>
+      </div>
+      <div className="hero-chips" aria-hidden="true">
+        {["AI SCORE", "TOP 100", "1D SIGNAL", "4H CONFIRM", "U.S. MARKET"].map(label => (
+          <span key={label} className="hero-chip">{label}</span>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -606,6 +713,7 @@ function SingleTickerCheck({ guest = false }) {
           placeholder="Type stock ticker to check"
           style={{ flex: "1 1 220px" }}
           disabled={limitReached}
+          data-single-ticker-input="true"
         />
         <button className="btn btn-blue" onClick={checkTicker} disabled={loading || limitReached}>
           {loading ? "Checking..." : "Check"}
@@ -613,6 +721,9 @@ function SingleTickerCheck({ guest = false }) {
       </div>
       {guest && remaining !== null && !limitReached && (
         <div style={{ marginTop: 8, fontSize: 11, color: "var(--muted)" }}>Guest scans left today: {remaining}/20</div>
+      )}
+      {guest && (
+        <div style={{ marginTop: 8, fontSize: 11, color: "var(--muted)" }}>Indicators based mainly on Daily candles</div>
       )}
       {error && <div className="err-box" style={{ marginTop: 10 }}>{error}</div>}
       {result && (
@@ -644,6 +755,15 @@ function SingleTickerCheck({ guest = false }) {
           </div>
           {result.signals?.length > 0 && (
             <div className="signals-list" style={{ marginTop: 10 }}>{result.signals.map((s, i) => <span key={i} className="signal-pill">{s}</span>)}</div>
+          )}
+          {!guest && result.confirmation_4h && (
+            <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap", fontSize: 12, color: "var(--text2)" }}>
+              <span className="tag">Primary indicators: 1D / Daily</span>
+              <span className="tag">Entry confirmation: 4H</span>
+              <span>4H setup: <b>{result.confirmation_4h.setup || "-"}</b></span>
+              <span>4H score: <b>{result.confirmation_4h.score ?? "-"}</b></span>
+              <span>4H RSI: <b>{result.confirmation_4h.rsi == null ? "-" : Number(result.confirmation_4h.rsi).toFixed(0)}</b></span>
+            </div>
           )}
           {result.analysis && (
             <div style={{ marginTop: 10, fontSize: 13, lineHeight: 1.6, color: "var(--text2)", whiteSpace: "pre-wrap" }}>{result.analysis}</div>
@@ -678,6 +798,7 @@ function GuestScreenerPage() {
 
   return (
     <div className="fade-up">
+      <ScreenerHero />
       <SingleTickerCheck guest />
       <div className="card" style={{ background: "#080C10", borderColor: "rgba(148,163,184,0.28)", boxShadow: "0 18px 50px rgba(0,0,0,0.28)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
@@ -686,6 +807,7 @@ function GuestScreenerPage() {
             <p style={{ color: "var(--text2)", fontSize: 13, lineHeight: 1.6, maxWidth: 760, margin: "8px 0 0" }}>
               This list is updated after the 9:30 AM and 1:00 PM ET market scans. SwingAI scans today's trending tickers and keeps only setups that pass the quality score rule. Guest view shows a fixed scan snapshot, so prices are not live-updated here.
             </p>
+            <div style={{ marginTop: 8, fontSize: 12, color: "var(--muted)" }}>Indicators based mainly on Daily candles</div>
           </div>
           <div style={{ minWidth: 220, fontSize: 12, color: "var(--text2)", lineHeight: 1.8 }}>
             <div><b>Scanned:</b> {scannedAt}</div>
@@ -845,7 +967,13 @@ function ScreenerPage({ onScanComplete, readOnly = false }) {
 
   return (
     <div className="fade-up">
+      <ScreenerHero />
       <SingleTickerCheck />
+
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12, fontSize: 12, color: "var(--text2)" }}>
+        <span className="tag">Primary indicators: 1D / Daily</span>
+        <span className="tag">Entry confirmation: 4H</span>
+      </div>
 
       <div className="card" style={{ marginBottom: 14 }}>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
@@ -950,7 +1078,14 @@ function ScreenerPage({ onScanComplete, readOnly = false }) {
                     <td><span style={{ color: (r.change_pct || 0) >= 0 ? "var(--green)" : "var(--red)" }}>{(r.change_pct || 0) >= 0 ? "+" : ""}{(r.change_pct || 0).toFixed(2)}%</span></td>
                     <td><ScoreGauge score={r.score} /></td>
                     <td><span style={{ color: SCORE_COLOR(r.score), fontWeight: 700 }}>{r.win_rate}%</span></td>
-                    <td><span className="tag">{r.setup}</span></td>
+                    <td>
+                      <span className="tag">{r.setup}</span>
+                      {r.confirmation_timeframe && (
+                        <div style={{ marginTop: 4, fontSize: 10, color: "var(--muted)" }}>
+                          4H: {r.confirmation_4h?.setup || "confirmation"}
+                        </div>
+                      )}
+                    </td>
                     <td><span style={{ color: (r.rsi || 50) < 35 ? "var(--green)" : (r.rsi || 50) > 70 ? "var(--red)" : "var(--text2)" }}>{r.rsi?.toFixed(0) || "–"}</span></td>
                     <td><span style={{ color: (r.vol_ratio || 0) > 1.5 ? "var(--amber)" : "var(--text2)" }}>{r.vol_ratio?.toFixed(1) || "–"}x</span></td>
                     <td style={{ color: "var(--green)" }}>${r.target?.toFixed(2)}</td>
@@ -1600,7 +1735,7 @@ function GuestReadOnlyPage() {
       <style>{css}</style>
       <div className="app">
         <header className="header">
-          <div className="logo">Swing<span>AI</span></div>
+          <div className="logo">SwingAI</div>
           <nav className="header-nav">
             {tabs.map(t => (
               <button
@@ -1728,7 +1863,7 @@ export default function App() {
       <style>{css}</style>
       <div className="app">
         <header className="header">
-          <div className="logo">Swing<span>AI</span></div>
+          <div className="logo">SwingAI</div>
           <nav className="header-nav">
             {tabs.map(t => (
               <button key={t.id} className={`nav-btn ${tab === t.id ? "active" : ""}`} onClick={() => setTab(t.id)}>{t.label}</button>
