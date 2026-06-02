@@ -65,6 +65,22 @@ const URGENCY_BADGE = {
 };
 
 // ─── Styles ──────────────────────────────────────────────────────────────────
+const GUEST_TERMS_ACCEPTED_KEY = "guestDisclaimerAccepted";
+const GUEST_TERMS_ACCEPTED_AT_KEY = "guestDisclaimerAcceptedAt";
+const GUEST_TERMS_ACCEPTED_V1_KEY = "swingai_terms_accepted_v1";
+
+const hasAcceptedGuestTerms = () =>
+  localStorage.getItem(GUEST_TERMS_ACCEPTED_KEY) === "true" ||
+  localStorage.getItem(GUEST_TERMS_ACCEPTED_V1_KEY) === "true";
+
+const markGuestTermsAccepted = () => {
+  const acceptedAt = new Date().toISOString();
+  localStorage.setItem(GUEST_TERMS_ACCEPTED_KEY, "true");
+  localStorage.setItem(GUEST_TERMS_ACCEPTED_V1_KEY, "true");
+  localStorage.setItem(GUEST_TERMS_ACCEPTED_AT_KEY, acceptedAt);
+  return acceptedAt;
+};
+
 const css = `
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 
@@ -469,9 +485,7 @@ function GuestDisclaimerModal({ readOnlyTerms = false, onAccept, onClose }) {
   const allChecked = checks.every(Boolean);
 
   const accept = () => {
-    const acceptedAt = new Date().toISOString();
-    localStorage.setItem("guestDisclaimerAccepted", "true");
-    localStorage.setItem("guestDisclaimerAcceptedAt", acceptedAt);
+    const acceptedAt = markGuestTermsAccepted();
     // TODO: Add backend acceptance logging if a database table/API is added.
     onAccept?.(acceptedAt);
   };
@@ -1720,7 +1734,7 @@ function SettingsPage() {
 function GuestReadOnlyPage() {
   const [guestTab, setGuestTab] = useState("screener");
   const [showLogin, setShowLogin] = useState(false);
-  const [disclaimerAccepted, setDisclaimerAccepted] = useState(() => localStorage.getItem("guestDisclaimerAccepted") === "true");
+  const [disclaimerAccepted, setDisclaimerAccepted] = useState(hasAcceptedGuestTerms);
   const [showTerms, setShowTerms] = useState(false);
   const tabs = [
     { id: "dashboard", label: "DASHBOARD", locked: true },
