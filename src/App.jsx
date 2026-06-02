@@ -583,24 +583,133 @@ function LoginPage({ embedded = false }) {
   return embedded ? box : <div className="login-screen">{box}</div>;
 }
 
-// ─── Dashboard ────────────────────────────────────────────────────────────────
-function DashboardPage({ positions, screenerResults, alerts }) {
-  const open = positions.filter(p => p.status !== "CLOSED");
-  const totalPnL    = open.reduce((a, p) => a + (p.pnl_dollar || 0), 0);
-  const totalMktVal = open.reduce((a, p) => a + (p.market_value || 0), 0);
-  const urgent      = open.filter(p => (p.sell_urgency || 0) >= 2).length;
-  const topPicks    = screenerResults.filter(s => s.score >= 70).slice(0, 5);
+// ─── Market Today ─────────────────────────────────────────────────────────────
+function formatCompactNumber(value) {
+  const n = Number(value || 0);
+  if (!Number.isFinite(n)) return "0";
+  if (Math.abs(n) >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(1)}B`;
+  if (Math.abs(n) >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (Math.abs(n) >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return n.toLocaleString();
+}
+
+function formatMarketPrice(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? `$${n.toFixed(2)}` : "—";
+}
+
+function formatMarketPct(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "—";
+  return `${n >= 0 ? "+" : ""}${n.toFixed(2)}%`;
+}
+
+function formatMarketUpdated(value) {
+  if (!value) return "Pending scheduled update";
+  try {
+    return `${new Date(value).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })} ET`;
+  } catch {
+    return value;
+  }
+}
+
+function MarketTable({ title, rows = [], showDollarVolume = false }) {
+  return (
+    <div className="card">
+      <div className="card-title">{title}</div>
+      {rows.length === 0 ? (
+        <div className="empty" style={{ padding: "22px 0" }}><p>No cached rows yet.</p></div>
+      ) : (
+        <div className="table-wrap">
+          <table>
+            <thead><tr><th>Ticker</th><th>Price</th><th>Change</th><th>Volume</th>{showDollarVolume && <th>Dollar Vol</th>}</tr></thead>
+            <tbody>
+              {rows.slice(0, 20).map((row, i) => {
+                const pct = Number(row.change_pct);
+                return (
+                  <tr key={`${row.ticker}-${i}`}>
+                    <td style={{ fontWeight: 800 }}>{row.ticker}</td>
+                    <td>{formatMarketPrice(row.price)}</td>
+                    <td style={{ color: Number.isFinite(pct) ? PNL_COLOR(pct) : "var(--muted)" }}>{formatMarketPct(row.change_pct)}</td>
+                    <td>{formatCompactNumber(row.volume)}</td>
+                    {showDollarVolume && <td>{formatCompactNumber(row.dollar_volume)}</td>}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MarketTodayPage({ admin = false }) {
+  const [market, setMarket] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState("");
+
+  useEffect(() => {
+    let mounted = true;
+    api("/api/market-today").then(({ data, error }) => {
+      if (!mounted) return;
+      setMarket(data || null);
+      setError(error || "");
+      setLoading(false);
+    });
+    return () => { mounted = false; };
+  }, []);
+
+  const summary = market?.market_snapshot_summary || {};
+  const source = market?.source || "massive";
+
+  const refreshMarketToday = async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    setRefreshError("");
+    const { data, error } = await api("/api/market-today/refresh", { method: "POST" });
+    setRefreshing(false);
+    if (error) {
+      setRefreshError(error);
+      return;
+    }
+    setMarket(data || null);
+    setError("");
+  };
 
   return (
     <div className="fade-up">
+      {admin && (
+        <div className="card" style={{ marginBottom: 14, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+          <div>
+            <div className="card-title" style={{ marginBottom: 4 }}>Market Today Refresh</div>
+            <div style={{ color: "var(--muted)", fontSize: 12 }}>Admin-only backend refresh for cached market data.</div>
+          </div>
+          <button className="btn btn-green" onClick={refreshMarketToday} disabled={refreshing}>
+            {refreshing ? "Refreshing Market Today..." : "Refresh Market Today"}
+          </button>
+          {refreshError && <div className="err-box" style={{ width: "100%", marginBottom: 0 }}>{refreshError}</div>}
+        </div>
+      )}
+
+      {loading && <div className="card"><div className="spin" style={{ width: 22, height: 22 }} /></div>}
+      {!loading && (error || !market?.available) && (
+        <div className="card" style={{ marginBottom: 14 }}>
+          <div className="card-title">Market Today</div>
+          <div style={{ color: "var(--muted)", fontSize: 13 }}>{error || market?.message || "Market Today data will update after the next scheduled fetch."}</div>
+        </div>
+      )}
+
       <div className="grid-4" style={{ marginBottom: 16 }}>
         {[
-          { label: "Open Positions", val: open.length,       sub: "in portfolio",  color: "var(--blue)" },
-          { label: "Total P&L",      val: (totalPnL >= 0 ? "+" : "") + "$" + Math.abs(totalPnL).toFixed(0), sub: "unrealized", color: PNL_COLOR(totalPnL) },
-          { label: "Market Value",   val: "$" + totalMktVal.toFixed(0), sub: "current", color: "var(--text)" },
-          { label: "Sell Alerts",    val: urgent, sub: urgent > 0 ? "needs attention" : "all clear", color: urgent > 0 ? "var(--red)" : "var(--green)" },
+          { label: "Advancers", val: formatCompactNumber(summary.advancers), sub: "stocks up", color: "var(--green)" },
+          { label: "Decliners", val: formatCompactNumber(summary.decliners), sub: "stocks down", color: "var(--red)" },
+          { label: "Total Volume", val: formatCompactNumber(summary.total_volume), sub: "estimated shares", color: "var(--blue)" },
+          { label: "Data Source", val: String(source).toUpperCase(), sub: formatMarketUpdated(market?.updated_at), color: "var(--text)" },
         ].map((s, i) => (
-          <div key={i} className="stat-card" style={i === 3 && urgent > 0 ? { borderColor: "rgba(255,77,77,.3)" } : {}}>
+          <div key={i} className="stat-card">
             <div className="stat-label">{s.label}</div>
             <div className="stat-value" style={{ color: s.color }}>{s.val}</div>
             <div className="stat-sub">{s.sub}</div>
@@ -608,66 +717,26 @@ function DashboardPage({ positions, screenerResults, alerts }) {
         ))}
       </div>
 
-      <div className="grid-2" style={{ gap: 12 }}>
-        <div className="card">
-          <div className="card-title">🔥 Top Screener Picks</div>
-          {topPicks.length === 0
-            ? <div className="empty" style={{ padding: "20px 0" }}><p>Run a scan in the Screener tab to find opportunities</p></div>
-            : topPicks.map((s, i) => (
-              <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-                <div style={{ fontFamily: "var(--mono)", fontWeight: 700, fontSize: 14, minWidth: 52 }}>{s.ticker}</div>
-                <div style={{ flex: 1 }}>
-                  <ScoreGauge score={s.score} />
-                  <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 3 }}>{s.setup}</div>
-                </div>
-                <div style={{ fontFamily: "var(--mono)", fontSize: 12, textAlign: "right" }}>
-                  <div>${typeof s.price === "number" ? s.price.toFixed(2) : s.price}</div>
-                  <div style={{ fontSize: 10, color: "var(--green)" }}>{s.win_rate}% WR</div>
-                </div>
-              </div>
-            ))
-          }
-        </div>
-
-        <div className="card">
-          <div className="card-title">📊 Portfolio Snapshot</div>
-          {open.length === 0
-            ? <div className="empty" style={{ padding: "20px 0" }}><p>No open positions — log a trade after buying</p></div>
-            : open.slice(0, 5).map((p, i) => {
-                const badge = URGENCY_BADGE[p.sell_urgency || 0];
-                return (
-                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-                    <div style={{ fontFamily: "var(--mono)", fontWeight: 700, fontSize: 14, minWidth: 52 }}>{p.ticker}</div>
-                    <div style={{ flex: 1 }}>
-                      <PositionBar entry={p.entry_price} current={p.current_price} target={p.target_price} stop={p.stop_loss} />
-                      <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 3 }}>{p.days_held}d held</div>
-                      <PriceReliabilityBadge position={p} />
-                    </div>
-                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3 }}>
-                      <span style={{ fontFamily: "var(--mono)", fontSize: 12, color: PNL_COLOR(p.pnl_pct || 0) }}>
-                        {(p.pnl_pct || 0) >= 0 ? "+" : ""}{(p.pnl_pct || 0).toFixed(1)}%
-                      </span>
-                      <span className="badge" style={{ background: badge.bg, color: badge.text, borderColor: badge.border, fontSize: 9 }}>{badge.label}</span>
-                    </div>
-                  </div>
-                );
-              })
-          }
-        </div>
+      <div className="grid-2" style={{ gap: 12, marginBottom: 14 }}>
+        <MarketTable title="Top Gainers" rows={market?.top_gainers || []} />
+        <MarketTable title="Top Losers" rows={market?.top_losers || []} />
       </div>
 
-      {alerts.length > 0 && (
-        <div className="card mt-4">
-          <div className="card-title">📬 Recent Alerts</div>
-          {alerts.slice(0, 4).map((a, i) => (
-            <div key={i} className={`alert-card alert-${a.type?.startsWith("BUY") ? "buy" : a.type?.includes("SELL") ? "sell" : "info"}`}>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ fontFamily: "var(--mono)", fontWeight: 600, fontSize: 13 }}>
-                  {a.type?.startsWith("BUY") ? "🚀" : "⚠️"} {a.ticker} — {a.type}
-                </span>
-                <span style={{ fontSize: 10, color: "var(--muted)" }}>{new Date(a.sent_at).toLocaleDateString()}</span>
+      <div className="grid-2" style={{ gap: 12, marginBottom: 14 }}>
+        <MarketTable title="Top 20 by Volume" rows={market?.most_active || []} />
+        <MarketTable title="Top 20 by Dollar Volume" rows={market?.highest_volume || []} showDollarVolume />
+      </div>
+
+      {(market?.news || []).length > 0 && (
+        <div className="card">
+          <div className="card-title">News / Events</div>
+          {(market.news || []).slice(0, 10).map((item, i) => (
+            <a key={i} href={item.url} target="_blank" rel="noreferrer" style={{ display: "block", color: "var(--text)", textDecoration: "none", padding: "10px 0", borderBottom: "1px solid var(--border2)" }}>
+              <div style={{ fontWeight: 700, fontSize: 13 }}>{item.title}</div>
+              <div style={{ color: "var(--muted)", fontSize: 11, marginTop: 3 }}>
+                {[item.publisher, formatMarketUpdated(item.published_at), ...(item.tickers || []).slice(0, 3)].filter(Boolean).join(" · ")}
               </div>
-            </div>
+            </a>
           ))}
         </div>
       )}
@@ -1716,7 +1785,7 @@ function SettingsPage() {
               ["Log Position has no reaction",     "DB migration not run → Supabase SQL Editor → run migration.sql"],
               ["History keeps spinning",           "Same — run migration.sql in Supabase"],
               ["Portfolio Monitor fails",          "Same + check Telegram token in Railway Variables"],
-              ["Dashboard shows no data",          "Normal until you run a scan and log a position"],
+              ["Market Today shows no data",       "Normal until the next 9:30 AM or 1:00 PM ET backend fetch"],
             ].map(([p, f], i) => (
               <div key={i} style={{ display: "flex", gap: 10, padding: "6px 0", borderBottom: "1px solid var(--border2)" }}>
                 <span style={{ color: "var(--red)", minWidth: 16 }}>❌</span>
@@ -1737,7 +1806,7 @@ function GuestReadOnlyPage() {
   const [disclaimerAccepted, setDisclaimerAccepted] = useState(hasAcceptedGuestTerms);
   const [showTerms, setShowTerms] = useState(false);
   const tabs = [
-    { id: "dashboard", label: "DASHBOARD", locked: true },
+    { id: "dashboard", label: "MARKET TODAY", locked: false },
     { id: "screener",  label: "SCREENER",  locked: false },
     { id: "portfolio", label: "PORTFOLIO", locked: true },
     { id: "history",   label: "HISTORY",   locked: true },
@@ -1770,10 +1839,15 @@ function GuestReadOnlyPage() {
         <main className="main">
           <div className="content">
             <div style={{ marginBottom: 14 }}>
-              <div style={{ fontSize: 18, fontWeight: 700 }}>{guestTab === "screener" ? "Stock Screener" : tabs.find(t => t.id === guestTab)?.label}</div>
-              <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>Read-only preview · Sign in to scan, trade, or send alerts</div>
+              <div style={{ fontSize: 18, fontWeight: 700 }}>{guestTab === "dashboard" ? "Market Today" : guestTab === "screener" ? "Stock Screener" : tabs.find(t => t.id === guestTab)?.label}</div>
+              <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>{guestTab === "dashboard" ? "Updated after the 9:30 AM and 1:00 PM ET market scans" : "Read-only preview · Sign in to scan, trade, or send alerts"}</div>
             </div>
-            {guestTab === "screener" ? (
+            {guestTab === "dashboard" ? (
+              <div className={showLogin ? "grid-2" : undefined} style={{ gap: 12, alignItems: "start" }}>
+                <MarketTodayPage />
+                {showLogin && <LoginPage embedded />}
+              </div>
+            ) : guestTab === "screener" ? (
               <div className={showLogin ? "grid-2" : undefined} style={{ gap: 12, alignItems: "start" }}>
                 <div>
                   <GuestScreenerPage />
@@ -1854,7 +1928,7 @@ export default function App() {
   const topToday = screenerResults.filter(s => s.score >= 75).length;
 
   const tabs = [
-    { id: "dashboard", label: "Dashboard" },
+    { id: "dashboard", label: "Market Today" },
     { id: "screener",  label: "Screener" + (topToday > 0 ? ` (${topToday})` : "") },
     { id: "portfolio", label: "Portfolio" + (urgent > 0 ? ` ⚠️${urgent}` : "") },
     { id: "history",   label: "History" },
@@ -1862,11 +1936,11 @@ export default function App() {
     { id: "settings",  label: "Settings" },
   ];
 
-  const titles = { dashboard: "Dashboard", screener: "Stock Screener", portfolio: "Portfolio Monitor", history: "Trade History", alerts: "Telegram Alerts", settings: "Settings" };
+  const titles = { dashboard: "Market Today", screener: "Stock Screener", portfolio: "Portfolio Monitor", history: "Trade History", alerts: "Telegram Alerts", settings: "Settings" };
   const subs   = {
     screener:  "Find high-probability setups · Score ≥70 = quality entry",
     portfolio: "Track open positions · AI checks for sell signals",
-    dashboard: new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" }),
+    dashboard: "Updated after the 9:30 AM and 1:00 PM ET market scans",
     history:   "Closed trades and win rate statistics",
     alerts:    "Telegram alert history and manual controls",
     settings:  "API status and configuration",
@@ -1896,7 +1970,7 @@ export default function App() {
               <div style={{ fontSize: 18, fontWeight: 700 }}>{titles[tab]}</div>
               <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>{subs[tab]}</div>
             </div>
-            {tab === "dashboard" && <DashboardPage positions={positions} screenerResults={screenerResults} alerts={alerts} />}
+            {tab === "dashboard" && <MarketTodayPage admin />}
             {tab === "screener"  && <ScreenerPage onScanComplete={loadData} />}
             {portfolioError && (
               <div className="card" style={{ borderColor: "rgba(239,68,68,.35)", marginBottom: 14 }}>
