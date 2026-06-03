@@ -267,6 +267,14 @@ const css = `
   .hero-chip:nth-child(4) { bottom: 20%; right: 29%; animation-delay: 2.4s; }
   .hero-chip:nth-child(5) { bottom: 12%; right: 7%; animation-delay: 3.2s; }
 
+  .app-footer { margin-top: 28px; padding: 18px 0 4px; border-top: 1px solid var(--border2); display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; color: rgba(148,163,184,0.78); font-size: 11px; }
+  .app-footer-links { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .app-footer-link { padding: 0; border: 0; background: transparent; color: rgba(148,163,184,0.82); font: inherit; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+  .app-footer-link:hover { color: var(--text2); }
+  .legal-modal-body { color: var(--text2); font-size: 13px; line-height: 1.65; }
+  .legal-modal-body p { margin: 0 0 10px; }
+  .market-source-value { overflow-wrap: anywhere; font-size: clamp(18px, 2vw, 24px); line-height: 1.15; }
+
   @keyframes heroGlow { from { transform: translate3d(-18%, -2%, 0) rotate(0deg); opacity: .72; } to { transform: translate3d(12%, 4%, 0) rotate(6deg); opacity: 1; } }
   @keyframes heroShimmer { 0%, 38% { transform: translateX(-115%); opacity: 0; } 48% { opacity: .72; } 64%, 100% { transform: translateX(115%); opacity: 0; } }
   @keyframes trendDraw { 0% { stroke-dashoffset: 540; opacity: .18; } 34%, 70% { stroke-dashoffset: 0; opacity: .78; } 100% { stroke-dashoffset: -540; opacity: .24; } }
@@ -344,7 +352,14 @@ function ScoreGauge({ score }) {
   );
 }
 
-function ScreenerHero() {
+function ScreenerHero({
+  kicker = "SwingAI Screener",
+  title = "Trade Smart with SwingAI",
+  subtitle = "AI analysis for medium-term U.S. stock trading",
+  reminders,
+  chips = ["AI SCORE", "TOP 100", "1D SIGNAL", "4H CONFIRM", "U.S. MARKET"],
+  showCta = true,
+}) {
   const focusTickerInput = () => {
     const input = document.querySelector("[data-single-ticker-input='true']");
     if (input) {
@@ -353,13 +368,14 @@ function ScreenerHero() {
     }
   };
 
-  const reminders = [
+  const defaultReminders = [
     "Swing trading only - not for day trading or options",
     "Best for traders with basic market knowledge",
     "Daily picks come from the top 100 trending U.S. stocks",
     "Need another stock? Type any ticker below",
     "For reference only - always do your own research",
   ];
+  const heroReminders = reminders || defaultReminders;
 
   return (
     <section className="screener-hero" aria-label="SwingAI screener overview" style={{ "--hero-bg": `url(${heroBg})` }}>
@@ -381,20 +397,84 @@ function ScreenerHero() {
         </svg>
       </div>
       <div className="hero-content">
-        <div className="hero-kicker">SwingAI Screener</div>
-        <h1 className="hero-title">Trade Smart with SwingAI</h1>
-        <p className="hero-subtitle">AI analysis for medium-term U.S. stock trading</p>
+        <div className="hero-kicker">{kicker}</div>
+        <h1 className="hero-title">{title}</h1>
+        <p className="hero-subtitle">{subtitle}</p>
         <div className="hero-reminders">
-          {reminders.map(item => <div key={item} className="hero-reminder">{item}</div>)}
+          {heroReminders.map(item => <div key={item} className="hero-reminder">{item}</div>)}
         </div>
-        <button className="hero-cta" onClick={focusTickerInput}>Analyze a Stock</button>
+        {showCta && <button className="hero-cta" onClick={focusTickerInput}>Analyze a Stock</button>}
       </div>
       <div className="hero-chips" aria-hidden="true">
-        {["AI SCORE", "TOP 100", "1D SIGNAL", "4H CONFIRM", "U.S. MARKET"].map(label => (
+        {chips.map(label => (
           <span key={label} className="hero-chip">{label}</span>
         ))}
       </div>
     </section>
+  );
+}
+
+const LEGAL_CONTENT = {
+  privacy: {
+    title: "Privacy Policy",
+    body: [
+      "Nexus Milestone Inc. may collect limited technical and usage information to operate SwingAI, protect the service, understand product usage, and maintain legal records.",
+      "This placeholder policy will be replaced with a full privacy policy before broader public release.",
+    ],
+  },
+  terms: {
+    title: "Terms & Agreement",
+    body: [
+      "By using SwingAI, you agree to use the service for educational and research purposes only and to verify all market data and analysis before making decisions.",
+      "This placeholder agreement will be replaced with full terms before broader public release.",
+    ],
+  },
+  disclaimer: {
+    title: "Disclaimer",
+    body: [
+      "SwingAI is for educational and research purposes only. It does not provide financial advice, investment advice, or trading recommendations. Always do your own research and consult a licensed professional if needed.",
+    ],
+  },
+  contact: {
+    title: "Contact Nexus Milestone Inc.",
+    body: [
+      "For SwingAI support or business inquiries, please contact Nexus Milestone Inc.",
+      "support@swingai.app",
+    ],
+  },
+};
+
+function LegalModal({ type, onClose }) {
+  const content = LEGAL_CONTENT[type];
+  if (!content) return null;
+  return (
+    <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="legal-modal-title" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()}>
+        <div id="legal-modal-title" className="modal-title">{content.title}</div>
+        <div className="legal-modal-body">
+          {content.body.map((paragraph, i) => (
+            <p key={i}>{paragraph}</p>
+          ))}
+        </div>
+        <div className="modal-actions">
+          <button className="btn btn-ghost" type="button" onClick={onClose}>Close</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AppFooter({ onOpenLegal }) {
+  return (
+    <footer className="app-footer">
+      <div>Nexus Milestone Inc.</div>
+      <div className="app-footer-links">
+        <button className="app-footer-link" type="button" onClick={() => onOpenLegal("privacy")}>Privacy Policy</button>
+        <button className="app-footer-link" type="button" onClick={() => onOpenLegal("terms")}>Terms &amp; Agreement</button>
+        <button className="app-footer-link" type="button" onClick={() => onOpenLegal("disclaimer")}>Disclaimer</button>
+        <button className="app-footer-link" type="button" onClick={() => onOpenLegal("contact")}>Contact</button>
+      </div>
+    </footer>
   );
 }
 
@@ -613,12 +693,26 @@ function formatMarketUpdated(value) {
   }
 }
 
-function MarketTable({ title, rows = [], showDollarVolume = false }) {
+function formatMarketSource(source) {
+  const normalized = String(source || "").trim().toLowerCase();
+  const labels = {
+    "yahoo_market_today+massive_news": "Yahoo Market Data + Massive News",
+    massive: "Massive",
+    yahoo_market_today: "Yahoo Market Data",
+  };
+  if (labels[normalized]) return labels[normalized];
+  return normalized
+    ? normalized.replace(/_/g, " ").replace(/\b\w/g, char => char.toUpperCase())
+    : "Pending";
+}
+
+function MarketTable({ title, rows = [], showDollarVolume = false, message = "", unavailableMessage = "" }) {
+  const emptyMessage = message || unavailableMessage || "No cached rows yet.";
   return (
     <div className="card">
       <div className="card-title">{title}</div>
       {rows.length === 0 ? (
-        <div className="empty" style={{ padding: "22px 0" }}><p>No cached rows yet.</p></div>
+        <div className="empty" style={{ padding: "22px 0" }}><p>{emptyMessage}</p></div>
       ) : (
         <div className="table-wrap">
           <table>
@@ -664,6 +758,13 @@ function MarketTodayPage({ admin = false }) {
 
   const summary = market?.market_snapshot_summary || {};
   const source = market?.source || "massive";
+  const snapshotUnavailable = summary.available === false;
+  const marketHeroReminders = [
+    "Market overview only - not a buy/sell signal",
+    "Swing trading context, not day-trading advice",
+    "Market data updates on a scheduled cache",
+    "Always verify before making decisions",
+  ];
 
   const refreshMarketToday = async () => {
     if (refreshing) return;
@@ -681,7 +782,15 @@ function MarketTodayPage({ admin = false }) {
 
   return (
     <div className="fade-up">
-      {admin && (
+      <ScreenerHero
+        kicker="Market Overview"
+        title="Market Today"
+        subtitle="U.S. market overview, movers, and news for swing-trading context"
+        reminders={marketHeroReminders}
+        chips={["BREADTH", "MOVERS", "VOLUME", "NEWS", "CACHE"]}
+        showCta={false}
+      />
+      {false && admin && (
         <div className="card" style={{ marginBottom: 14, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
           <div>
             <div className="card-title" style={{ marginBottom: 4 }}>Market Today Refresh</div>
@@ -701,45 +810,56 @@ function MarketTodayPage({ admin = false }) {
           <div style={{ color: "var(--muted)", fontSize: 13 }}>{error || market?.message || "Market Today data will update after the next scheduled fetch."}</div>
         </div>
       )}
+      {!loading && market?.available && snapshotUnavailable && (
+        <div className="card" style={{ marginBottom: 14 }}>
+          <div className="card-title">Market Snapshot</div>
+          <div style={{ color: "var(--muted)", fontSize: 13 }}>Market breadth summary is unavailable on the current data plan.</div>
+        </div>
+      )}
 
       <div className="grid-4" style={{ marginBottom: 16 }}>
         {[
           { label: "Advancers", val: formatCompactNumber(summary.advancers), sub: "stocks up", color: "var(--green)" },
           { label: "Decliners", val: formatCompactNumber(summary.decliners), sub: "stocks down", color: "var(--red)" },
           { label: "Total Volume", val: formatCompactNumber(summary.total_volume), sub: "estimated shares", color: "var(--blue)" },
-          { label: "Data Source", val: String(source).toUpperCase(), sub: formatMarketUpdated(market?.updated_at), color: "var(--text)" },
+          { label: "Data Source", val: formatMarketSource(source), sub: formatMarketUpdated(market?.updated_at), color: "var(--text)", className: "market-source-value" },
         ].map((s, i) => (
           <div key={i} className="stat-card">
             <div className="stat-label">{s.label}</div>
-            <div className="stat-value" style={{ color: s.color }}>{s.val}</div>
+            <div className={`stat-value ${s.className || ""}`} style={{ color: s.color }}>{s.val}</div>
             <div className="stat-sub">{s.sub}</div>
           </div>
         ))}
       </div>
 
       <div className="grid-2" style={{ gap: 12, marginBottom: 14 }}>
-        <MarketTable title="Top Gainers" rows={market?.top_gainers || []} />
-        <MarketTable title="Top Losers" rows={market?.top_losers || []} />
+        <MarketTable title="Top Gainers" rows={market?.top_gainers || []} message={market?.top_gainers_message || "Yahoo market data is temporarily unavailable. Scheduled refresh will try again later."} />
+        <MarketTable title="Top Losers" rows={market?.top_losers || []} message={market?.top_losers_message || "Yahoo market data is temporarily unavailable. Scheduled refresh will try again later."} />
       </div>
 
       <div className="grid-2" style={{ gap: 12, marginBottom: 14 }}>
-        <MarketTable title="Top 20 by Volume" rows={market?.most_active || []} />
-        <MarketTable title="Top 20 by Dollar Volume" rows={market?.highest_volume || []} showDollarVolume />
+        <MarketTable title="Top 20 by Volume" rows={market?.most_active || []} message="Volume movers are temporarily unavailable. Scheduled refresh will try again later." />
+        <MarketTable title="Top 20 by Dollar Volume" rows={market?.highest_volume || []} showDollarVolume message="Volume movers are temporarily unavailable. Scheduled refresh will try again later." />
       </div>
 
-      {(market?.news || []).length > 0 && (
+      {(market?.news || []).length > 0 ? (
         <div className="card">
           <div className="card-title">News / Events</div>
           {(market.news || []).slice(0, 10).map((item, i) => (
-            <a key={i} href={item.url} target="_blank" rel="noreferrer" style={{ display: "block", color: "var(--text)", textDecoration: "none", padding: "10px 0", borderBottom: "1px solid var(--border2)" }}>
-              <div style={{ fontWeight: 700, fontSize: 13 }}>{item.title}</div>
+            <a key={i} href={item.url} target="_blank" rel="noreferrer" style={{ display: "block", color: "var(--text2)", textDecoration: "none", padding: "10px 0", borderBottom: "1px solid var(--border2)" }}>
+              <div style={{ fontWeight: 500, fontSize: 13, color: "rgba(223,232,244,0.78)" }}>{item.title}</div>
               <div style={{ color: "var(--muted)", fontSize: 11, marginTop: 3 }}>
                 {[item.publisher, formatMarketUpdated(item.published_at), ...(item.tickers || []).slice(0, 3)].filter(Boolean).join(" · ")}
               </div>
             </a>
           ))}
         </div>
-      )}
+      ) : market?.news_message ? (
+        <div className="card">
+          <div className="card-title">News / Events</div>
+          <div className="empty" style={{ padding: "22px 0" }}><p>{market.news_message}</p></div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -1785,7 +1905,7 @@ function SettingsPage() {
               ["Log Position has no reaction",     "DB migration not run → Supabase SQL Editor → run migration.sql"],
               ["History keeps spinning",           "Same — run migration.sql in Supabase"],
               ["Portfolio Monitor fails",          "Same + check Telegram token in Railway Variables"],
-              ["Market Today shows no data",       "Normal until the next 9:30 AM or 1:00 PM ET backend fetch"],
+              ["Market Today shows no data",       "Normal until the next scheduled Market Today cache refresh"],
             ].map(([p, f], i) => (
               <div key={i} style={{ display: "flex", gap: 10, padding: "6px 0", borderBottom: "1px solid var(--border2)" }}>
                 <span style={{ color: "var(--red)", minWidth: 16 }}>❌</span>
@@ -1805,6 +1925,7 @@ function GuestReadOnlyPage() {
   const [showLogin, setShowLogin] = useState(false);
   const [disclaimerAccepted, setDisclaimerAccepted] = useState(hasAcceptedGuestTerms);
   const [showTerms, setShowTerms] = useState(false);
+  const [legalModal, setLegalModal] = useState(null);
   const tabs = [
     { id: "dashboard", label: "MARKET TODAY", locked: false },
     { id: "screener",  label: "SCREENER",  locked: false },
@@ -1840,7 +1961,7 @@ function GuestReadOnlyPage() {
           <div className="content">
             <div style={{ marginBottom: 14 }}>
               <div style={{ fontSize: 18, fontWeight: 700 }}>{guestTab === "dashboard" ? "Market Today" : guestTab === "screener" ? "Stock Screener" : tabs.find(t => t.id === guestTab)?.label}</div>
-              <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>{guestTab === "dashboard" ? "Updated after the 9:30 AM and 1:00 PM ET market scans" : "Read-only preview · Sign in to scan, trade, or send alerts"}</div>
+              <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>{guestTab === "dashboard" ? "Updated by scheduled Market Today cache refreshes" : "Read-only preview · Sign in to scan, trade, or send alerts"}</div>
             </div>
             {guestTab === "dashboard" ? (
               <div className={showLogin ? "grid-2" : undefined} style={{ gap: 12, alignItems: "start" }}>
@@ -1851,7 +1972,6 @@ function GuestReadOnlyPage() {
               <div className={showLogin ? "grid-2" : undefined} style={{ gap: 12, alignItems: "start" }}>
                 <div>
                   <GuestScreenerPage />
-                  <button className="guest-footer-link" type="button" onClick={() => setShowTerms(true)}>Terms &amp; Disclaimer</button>
                 </div>
                 {showLogin && <LoginPage embedded />}
               </div>
@@ -1865,6 +1985,7 @@ function GuestReadOnlyPage() {
                 {showLogin && <LoginPage embedded />}
               </div>
             )}
+            <AppFooter onOpenLegal={setLegalModal} />
           </div>
         </main>
       </div>
@@ -1874,6 +1995,7 @@ function GuestReadOnlyPage() {
       {showTerms && (
         <GuestDisclaimerModal readOnlyTerms onClose={() => setShowTerms(false)} />
       )}
+      {legalModal && <LegalModal type={legalModal} onClose={() => setLegalModal(null)} />}
     </>
   );
 }
@@ -1887,6 +2009,7 @@ export default function App() {
   const [portfolioError, setPortfolioError] = useState(null);
   const [screenerResults, setScreenerResults] = useState([]);
   const [alerts,      setAlerts]      = useState([]);
+  const [legalModal,  setLegalModal]  = useState(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -1940,7 +2063,7 @@ export default function App() {
   const subs   = {
     screener:  "Find high-probability setups · Score ≥70 = quality entry",
     portfolio: "Track open positions · AI checks for sell signals",
-    dashboard: "Updated after the 9:30 AM and 1:00 PM ET market scans",
+    dashboard: "Updated by scheduled Market Today cache refreshes",
     history:   "Closed trades and win rate statistics",
     alerts:    "Telegram alert history and manual controls",
     settings:  "API status and configuration",
@@ -1982,9 +2105,11 @@ export default function App() {
             {tab === "history"   && <HistoryPage />}
             {tab === "alerts"    && <AlertsPage />}
             {tab === "settings"  && <SettingsPage />}
+            <AppFooter onOpenLegal={setLegalModal} />
           </div>
         </main>
       </div>
+      {legalModal && <LegalModal type={legalModal} onClose={() => setLegalModal(null)} />}
     </>
   );
 }
