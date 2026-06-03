@@ -133,6 +133,7 @@ const css = `
   .card-title { font-size: 11px; font-weight: 800; letter-spacing: 1.2px; text-transform: uppercase; color: var(--muted); margin-bottom: 14px; }
 
   .grid-2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; align-items: stretch; }
+  .grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; align-items: stretch; }
   .grid-4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; align-items: stretch; }
   .mt-3 { margin-top: 12px; }
   .mt-4 { margin-top: 16px; }
@@ -273,7 +274,6 @@ const css = `
   .app-footer-link:hover { color: var(--text2); }
   .legal-modal-body { color: var(--text2); font-size: 13px; line-height: 1.65; }
   .legal-modal-body p { margin: 0 0 10px; }
-  .market-source-value { overflow-wrap: anywhere; font-size: clamp(18px, 2vw, 24px); line-height: 1.15; }
 
   @keyframes heroGlow { from { transform: translate3d(-18%, -2%, 0) rotate(0deg); opacity: .72; } to { transform: translate3d(12%, 4%, 0) rotate(6deg); opacity: 1; } }
   @keyframes heroShimmer { 0%, 38% { transform: translateX(-115%); opacity: 0; } 48% { opacity: .72; } 64%, 100% { transform: translateX(115%); opacity: 0; } }
@@ -284,7 +284,7 @@ const css = `
 
   @media (max-width: 900px) {
     .content { padding: 18px; }
-    .grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .grid-3, .grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .header { gap: 12px; }
     .header-right { gap: 8px; }
     .hero-content { max-width: 720px; }
@@ -308,7 +308,7 @@ const css = `
     .hero-chip { position: static; animation: chipFloat 7s ease-in-out infinite; }
   }
   @media (max-width: 640px) {
-    .grid-2, .grid-4 { grid-template-columns: 1fr; }
+    .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
     .card, .stat-card { padding: 14px; }
     .header-nav .nav-btn { font-size: 10px; padding: 6px 9px; }
     .user-pill { max-width: 110px; }
@@ -693,19 +693,6 @@ function formatMarketUpdated(value) {
   }
 }
 
-function formatMarketSource(source) {
-  const normalized = String(source || "").trim().toLowerCase();
-  const labels = {
-    "yahoo_market_today+massive_news": "Yahoo Market Data + Massive News",
-    massive: "Massive",
-    yahoo_market_today: "Yahoo Market Data",
-  };
-  if (labels[normalized]) return labels[normalized];
-  return normalized
-    ? normalized.replace(/_/g, " ").replace(/\b\w/g, char => char.toUpperCase())
-    : "Pending";
-}
-
 function MarketTable({ title, rows = [], showDollarVolume = false, message = "", unavailableMessage = "" }) {
   const emptyMessage = message || unavailableMessage || "No cached rows yet.";
   return (
@@ -757,8 +744,11 @@ function MarketTodayPage({ admin = false }) {
   }, []);
 
   const summary = market?.market_snapshot_summary || {};
-  const source = market?.source || "massive";
   const snapshotUnavailable = summary.available === false;
+  const pendingMarketMessage = "Market Today data will update after the next scheduled refresh. The cache may be empty after a backend redeploy.";
+  const marketStatusMessage = market?.message === "Market Today data will update after the next scheduled fetch."
+    ? pendingMarketMessage
+    : market?.message;
   const marketHeroReminders = [
     "Market overview only - not a buy/sell signal",
     "Swing trading context, not day-trading advice",
@@ -807,7 +797,9 @@ function MarketTodayPage({ admin = false }) {
       {!loading && (error || !market?.available) && (
         <div className="card" style={{ marginBottom: 14 }}>
           <div className="card-title">Market Today</div>
-          <div style={{ color: "var(--muted)", fontSize: 13 }}>{error || market?.message || "Market Today data will update after the next scheduled fetch."}</div>
+          <div style={{ color: "var(--muted)", fontSize: 13 }}>
+            {error || marketStatusMessage || pendingMarketMessage}
+          </div>
         </div>
       )}
       {!loading && market?.available && snapshotUnavailable && (
@@ -817,12 +809,11 @@ function MarketTodayPage({ admin = false }) {
         </div>
       )}
 
-      <div className="grid-4" style={{ marginBottom: 16 }}>
+      <div className="grid-3" style={{ marginBottom: 16 }}>
         {[
           { label: "Advancers", val: formatCompactNumber(summary.advancers), sub: "stocks up", color: "var(--green)" },
           { label: "Decliners", val: formatCompactNumber(summary.decliners), sub: "stocks down", color: "var(--red)" },
           { label: "Total Volume", val: formatCompactNumber(summary.total_volume), sub: "estimated shares", color: "var(--blue)" },
-          { label: "Data Source", val: formatMarketSource(source), sub: formatMarketUpdated(market?.updated_at), color: "var(--text)", className: "market-source-value" },
         ].map((s, i) => (
           <div key={i} className="stat-card">
             <div className="stat-label">{s.label}</div>
@@ -842,24 +833,21 @@ function MarketTodayPage({ admin = false }) {
         <MarketTable title="Top 20 by Dollar Volume" rows={market?.highest_volume || []} showDollarVolume message="Volume movers are temporarily unavailable. Scheduled refresh will try again later." />
       </div>
 
-      {(market?.news || []).length > 0 ? (
-        <div className="card">
-          <div className="card-title">News / Events</div>
-          {(market.news || []).slice(0, 10).map((item, i) => (
+      <div className="card">
+        <div className="card-title">News / Events</div>
+        {(market?.news || []).length > 0 ? (
+          (market.news || []).slice(0, 10).map((item, i) => (
             <a key={i} href={item.url} target="_blank" rel="noreferrer" style={{ display: "block", color: "var(--text2)", textDecoration: "none", padding: "10px 0", borderBottom: "1px solid var(--border2)" }}>
               <div style={{ fontWeight: 500, fontSize: 13, color: "rgba(223,232,244,0.78)" }}>{item.title}</div>
               <div style={{ color: "var(--muted)", fontSize: 11, marginTop: 3 }}>
                 {[item.publisher, formatMarketUpdated(item.published_at), ...(item.tickers || []).slice(0, 3)].filter(Boolean).join(" · ")}
               </div>
             </a>
-          ))}
-        </div>
-      ) : market?.news_message ? (
-        <div className="card">
-          <div className="card-title">News / Events</div>
-          <div className="empty" style={{ padding: "22px 0" }}><p>{market.news_message}</p></div>
-        </div>
-      ) : null}
+          ))
+        ) : (
+          <div className="empty" style={{ padding: "22px 0" }}><p>News will update after the next scheduled Market Today refresh.</p></div>
+        )}
+      </div>
     </div>
   );
 }
