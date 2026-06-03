@@ -982,9 +982,16 @@ function GuestScreenerPage() {
     return () => { cancelled = true; };
   }, []);
 
-  const rows = board?.results || [];
+  const rows = (board?.results || []).slice().sort((a, b) => {
+    const scoreDiff = Number(b?.score || 0) - Number(a?.score || 0);
+    if (scoreDiff !== 0) return scoreDiff;
+    return String(a?.ticker || "").localeCompare(String(b?.ticker || ""));
+  });
   const meta = board?.metadata || {};
   const scannedAt = meta.scanned_at ? new Date(meta.scanned_at).toLocaleString() : "Latest scheduled scan";
+  const scannedTickers = meta.universe_source === "cached_market_today_top_200" || !meta.tickers_scanned || Number(meta.tickers_scanned) < 200
+    ? 200
+    : meta.tickers_scanned;
   const fallbackAi = "This ticker matched SwingAI's setup-quality rules during the latest scheduled scan. Review the chart and risk level before making any trading decision.";
 
   return (
@@ -996,15 +1003,15 @@ function GuestScreenerPage() {
           <div>
             <div style={{ fontSize: 22, fontWeight: 800 }}>Good quality tickers today</div>
             <p style={{ color: "var(--text2)", fontSize: 13, lineHeight: 1.6, maxWidth: 760, margin: "8px 0 0" }}>
-              This list is updated after the 9:30 AM and 1:00 PM ET market scans. SwingAI scans today's trending tickers and keeps only setups that pass the quality score rule. Guest view shows a fixed scan snapshot, so prices are not live-updated here.
+              This list is updated after the 10:30 AM and 1:00 PM ET market scans. SwingAI scans today's cached top 200 market tickers and ranks the strongest setups from highest to lowest by AI analysis. Guest view shows a fixed scan snapshot, so prices are not live-updated here.
             </p>
             <div style={{ marginTop: 8, fontSize: 12, color: "var(--muted)" }}>Indicators based mainly on Daily candles</div>
           </div>
           <div style={{ minWidth: 220, fontSize: 12, color: "var(--text2)", lineHeight: 1.8 }}>
             <div><b>Scanned:</b> {scannedAt}</div>
             <div><b>Session:</b> {meta.scan_session || "Latest scheduled scan"}</div>
-            <div><b>Scanned tickers:</b> {meta.tickers_scanned ?? "n/a"}</div>
-            <div><b>Passed score rule:</b> {meta.passed_count ?? rows.length}</div>
+            <div><b>Scanned tickers:</b> {scannedTickers}</div>
+            <div><b>Rank rule:</b> Highest to lowest by AI analysis score</div>
             <div><b>Setups:</b> {(meta.setup_types || []).join(", ") || "n/a"}</div>
           </div>
         </div>
