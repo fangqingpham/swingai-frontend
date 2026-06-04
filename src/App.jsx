@@ -165,10 +165,11 @@ const css = `
   .stat-value { font-family: var(--mono); font-size: 24px; font-weight: 700; margin-top: 6px; line-height: 1.1; }
   .stat-sub { font-size: 11px; color: var(--text2); margin-top: 6px; line-height: 1.35; }
 
-  .table-wrap { overflow-x: auto; border-radius: inherit; }
+  .table-wrap { width: 100%; max-width: 100%; box-sizing: border-box; overflow-x: auto; border-radius: inherit; -webkit-overflow-scrolling: touch; }
   table { width: 100%; border-collapse: separate; border-spacing: 0; font-family: var(--mono); min-width: 760px; }
   th { text-align: left; padding: 10px 12px; font-size: 9px; font-weight: 800; letter-spacing: 1.2px; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--border2); white-space: nowrap; position: sticky; top: 0; background: #0F141C; z-index: 1; }
   td { padding: 11px 12px; font-size: 12px; border-bottom: 1px solid rgba(255,255,255,0.045); white-space: nowrap; vertical-align: middle; color: var(--text2); }
+  .market-col-label-mobile { display: none; }
   tbody tr:nth-child(even) td { background: rgba(255,255,255,0.012); }
   tr:hover td { background: rgba(0,255,178,0.035); }
   tr:last-child td { border-bottom: none; }
@@ -223,8 +224,10 @@ const css = `
   .err-box { background: rgba(255,77,77,.08); border: 1px solid rgba(255,77,77,.25); border-radius: 8px; padding: 12px 14px; font-size: 12px; color: var(--red); margin-bottom: 12px; }
   .ok-box  { background: rgba(0,255,178,.08); border: 1px solid rgba(0,255,178,.25); border-radius: 8px; padding: 12px 14px; font-size: 12px; color: var(--green); margin-bottom: 12px; }
 
-  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.78); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 16px; }
-  .modal { background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 24px; width: min(520px, 100%); max-height: calc(100vh - 32px); overflow-y: auto; box-shadow: 0 20px 80px rgba(0,0,0,0.5); }
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.78); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 16px; overflow-y: auto; }
+  .modal { background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 24px; width: min(92vw, 520px); max-height: 85dvh; overflow-y: auto; box-shadow: 0 20px 80px rgba(0,0,0,0.5); }
+  .guest-zone-modal-overlay { z-index: 1200; }
+  .guest-zone-modal { width: min(92vw, 520px); max-height: 85dvh; }
   .modal-title { font-size: 16px; font-weight: 700; margin-bottom: 16px; }
   .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
   .guest-disclaimer-overlay { position: fixed; inset: 0; z-index: 200; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(0,0,0,0.78); backdrop-filter: blur(6px); }
@@ -329,6 +332,7 @@ const css = `
     .hero-chip { position: static; animation: chipFloat 7s ease-in-out infinite; }
   }
   @media (max-width: 640px) {
+    html, body, #root, .app, .content { max-width: 100%; overflow-x: hidden; }
     .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
     .card, .stat-card { padding: 14px; }
     .header-nav .nav-btn { font-size: 10px; padding: 6px 9px; }
@@ -337,6 +341,30 @@ const css = `
     table { min-width: 720px; }
     th { padding: 9px 10px; }
     td { padding: 10px; }
+    .market-table-card { width: 100%; max-width: 100%; overflow: hidden; }
+    .market-table-wrap { width: 100%; max-width: 100%; overflow-x: auto; }
+    .market-table { min-width: 0; table-layout: fixed; font-size: 11px; }
+    .market-table th { padding: 6px 4px; font-size: 8px; letter-spacing: 0; }
+    .market-table td { padding: 6px 4px; font-size: 11px; }
+    .market-table th:first-child, .market-table td:first-child { padding-left: 6px; width: 23%; }
+    .market-table th:nth-child(2), .market-table td:nth-child(2),
+    .market-table th:nth-child(3), .market-table td:nth-child(3),
+    .market-table th:nth-child(4), .market-table td:nth-child(4),
+    .market-table th:nth-child(5), .market-table td:nth-child(5) { text-align: right; }
+    .market-table th:nth-child(2), .market-table td:nth-child(2) { width: 25%; }
+    .market-table th:nth-child(3), .market-table td:nth-child(3) { width: 20%; }
+    .market-table th:nth-child(4), .market-table td:nth-child(4) { width: 28%; }
+    .market-table.has-dollar-volume th:first-child, .market-table.has-dollar-volume td:first-child { width: 19%; }
+    .market-table.has-dollar-volume th:nth-child(2), .market-table.has-dollar-volume td:nth-child(2) { width: 21%; }
+    .market-table.has-dollar-volume th:nth-child(3), .market-table.has-dollar-volume td:nth-child(3) { width: 17%; }
+    .market-table.has-dollar-volume th:nth-child(4), .market-table.has-dollar-volume td:nth-child(4) { width: 22%; }
+    .market-table.has-dollar-volume th:nth-child(5), .market-table.has-dollar-volume td:nth-child(5) { width: 21%; }
+    .market-col-label-full { display: none; }
+    .market-col-label-mobile { display: inline; }
+    .modal-overlay { align-items: center; padding: max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom)); z-index: 1000; }
+    .modal { width: min(92vw, 520px); max-height: 85dvh; padding: 18px; }
+    .modal-actions { justify-content: stretch; }
+    .modal-actions .btn { flex: 1; min-height: 42px; }
     .guest-disclaimer-modal { padding: 18px; }
     .guest-disclaimer-overlay .modal-actions { justify-content: stretch; }
     .guest-disclaimer-overlay .modal-actions .btn { flex: 1; }
@@ -739,14 +767,22 @@ function formatLocalDateTime(value) {
 function MarketTable({ title, rows = [], showDollarVolume = false, message = "", unavailableMessage = "" }) {
   const emptyMessage = message || unavailableMessage || "No cached rows yet.";
   return (
-    <div className="card">
+    <div className="card market-table-card">
       <div className="card-title">{title}</div>
       {rows.length === 0 ? (
         <div className="empty" style={{ padding: "22px 0" }}><p>{emptyMessage}</p></div>
       ) : (
-        <div className="table-wrap">
-          <table>
-            <thead><tr><th>Ticker</th><th>Price</th><th>Change</th><th>Volume</th>{showDollarVolume && <th>Dollar Vol</th>}</tr></thead>
+        <div className="table-wrap market-table-wrap">
+          <table className={`market-table${showDollarVolume ? " has-dollar-volume" : ""}`}>
+            <thead>
+              <tr>
+                <th>Ticker</th>
+                <th>Price</th>
+                <th><span className="market-col-label-full">Change</span><span className="market-col-label-mobile">Chg</span></th>
+                <th>Volume</th>
+                {showDollarVolume && <th><span className="market-col-label-full">Dollar Vol</span><span className="market-col-label-mobile">$ Vol</span></th>}
+              </tr>
+            </thead>
             <tbody>
               {rows.slice(0, 20).map((row, i) => {
                 const pct = Number(row.change_pct);
@@ -940,9 +976,15 @@ function SingleTickerCheck({ guest = false }) {
   const suggestedZone = result?.suggested_entry_zone;
   const canShowSuggestedZone = Boolean(suggestedZone && (!guest || guestZoneAccepted));
   const acceptGuestZoneDisclaimer = () => {
+    console.log("GUEST_DISCLAIMER_ACCEPTED");
     setSessionFlag(GUEST_ZONE_DISCLAIMER_KEY, true);
     setGuestZoneAccepted(true);
     setShowGuestZoneDisclaimer(false);
+  };
+  const openGuestZoneDisclaimer = () => {
+    console.log("GUEST_ZONE_VIEW_CLICKED");
+    console.log("GUEST_DISCLAIMER_OPEN");
+    setShowGuestZoneDisclaimer(true);
   };
   const singleTickerColumns = guest
     ? ["Price", "RSI", "Vol Ratio", "Target", "Stop Loss"]
@@ -1013,7 +1055,7 @@ function SingleTickerCheck({ guest = false }) {
             <div style={{ marginTop: 12, padding: 12, borderRadius: 8, border: "1px solid var(--border2)", background: "rgba(0,170,255,0.06)" }}>
               <div style={{ fontWeight: 800, marginBottom: 4 }}>AI Suggested Entry Zone available</div>
               <div style={{ color: "var(--muted)", fontSize: 12, marginBottom: 10 }}>View research-only entry analysis.</div>
-              <button className="btn btn-blue" onClick={() => setShowGuestZoneDisclaimer(true)}>View AI Analysis</button>
+              <button className="btn btn-blue" onClick={openGuestZoneDisclaimer}>View AI Analysis</button>
             </div>
           )}
           {!guest && result.confirmation_4h && (
@@ -1031,8 +1073,8 @@ function SingleTickerCheck({ guest = false }) {
         </div>
       )}
       {showGuestZoneDisclaimer && (
-        <div className="modal-overlay" onClick={() => setShowGuestZoneDisclaimer(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
+        <div className="modal-overlay guest-zone-modal-overlay" onClick={() => setShowGuestZoneDisclaimer(false)}>
+          <div className="modal guest-zone-modal" onClick={e => e.stopPropagation()}>
             <div className="modal-title">AI Research Disclaimer</div>
             <div style={{ color: "var(--text2)", fontSize: 13, lineHeight: 1.6, display: "grid", gap: 10 }}>
               <p style={{ margin: 0 }}>
