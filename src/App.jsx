@@ -14,8 +14,25 @@ const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "https://cpoumpdgmjbqh
 const SUPABASE_ANON = import.meta.env.VITE_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNwb3VtcGRnbWpicWhtanFyZ2VjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk3MDcxNDcsImV4cCI6MjA5NTI4MzE0N30.q4-QleVM5flNGGltA7veVwrQq0e8NX-luz6eNdJ3lNs";
 const CONTACT_EMAIL = "seed2success.financial@outlook.com";
 const CONTACT_MAILTO = `mailto:${CONTACT_EMAIL}`;
+const GUEST_ZONE_DISCLAIMER_KEY = "swingaiGuestSuggestedEntryZoneDisclaimerAccepted";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON);
+
+const sessionFlag = key => {
+  try {
+    return window.sessionStorage.getItem(key) === "true";
+  } catch {
+    return false;
+  }
+};
+
+const setSessionFlag = (key, value) => {
+  try {
+    window.sessionStorage.setItem(key, value ? "true" : "false");
+  } catch {
+    // Session persistence is optional; the current page state still gates access.
+  }
+};
 
 // Returns { data, error } — never throws
 const api = async (path, opts = {}) => {
@@ -699,6 +716,26 @@ function formatMarketUpdated(value) {
   }
 }
 
+function formatLocalDateTime(value) {
+  if (!value) return "-";
+  try {
+    const raw = String(value);
+    const hasTimezone = /(?:z|[+-]\d{2}:?\d{2})$/i.test(raw);
+    const normalized = hasTimezone ? raw : `${raw}Z`;
+    const date = new Date(normalized);
+    if (Number.isNaN(date.getTime())) return raw;
+    return `${date.toLocaleString([], {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    })} local`;
+  } catch {
+    return String(value);
+  }
+}
+
 function MarketTable({ title, rows = [], showDollarVolume = false, message = "", unavailableMessage = "" }) {
   const emptyMessage = message || unavailableMessage || "No cached rows yet.";
   return (
@@ -870,6 +907,8 @@ function SingleTickerCheck({ guest = false }) {
   const [loading, setLoading] = useState(false);
   const [remaining, setRemaining] = useState(null);
   const [limitReached, setLimitReached] = useState(false);
+  const [guestZoneAccepted, setGuestZoneAccepted] = useState(() => !guest || sessionFlag(GUEST_ZONE_DISCLAIMER_KEY));
+  const [showGuestZoneDisclaimer, setShowGuestZoneDisclaimer] = useState(false);
 
   const checkTicker = async () => {
     const symbol = ticker.trim().toUpperCase();
@@ -898,6 +937,13 @@ function SingleTickerCheck({ guest = false }) {
   const volumeRatio = result?.volume_ratio ?? result?.vol_ratio;
   const formatMoney = value => value == null || value === "" ? "-" : `$${Number(value).toFixed(2)}`;
   const formatNumber = value => value == null || value === "" ? "-" : Number(value).toFixed(2);
+  const suggestedZone = result?.suggested_entry_zone;
+  const canShowSuggestedZone = Boolean(suggestedZone && (!guest || guestZoneAccepted));
+  const acceptGuestZoneDisclaimer = () => {
+    setSessionFlag(GUEST_ZONE_DISCLAIMER_KEY, true);
+    setGuestZoneAccepted(true);
+    setShowGuestZoneDisclaimer(false);
+  };
   const singleTickerColumns = guest
     ? ["Price", "RSI", "Vol Ratio", "Target", "Stop Loss"]
     : ["Price", "Chg%", "RSI", "Vol Ratio", "Target", "Stop Loss", "R:R", "Source"];
@@ -957,11 +1003,18 @@ function SingleTickerCheck({ guest = false }) {
           {result.signals?.length > 0 && (
             <div className="signals-list" style={{ marginTop: 10 }}>{result.signals.map((s, i) => <span key={i} className="signal-pill">{s}</span>)}</div>
           )}
-          {!guest && result.suggested_entry_zone && (
+          {canShowSuggestedZone && (
             <SuggestedEntryZone
-              zone={result.suggested_entry_zone}
+              zone={suggestedZone}
               description="Research-only entry zone from this ticker check."
             />
+          )}
+          {guest && suggestedZone && !guestZoneAccepted && (
+            <div style={{ marginTop: 12, padding: 12, borderRadius: 8, border: "1px solid var(--border2)", background: "rgba(0,170,255,0.06)" }}>
+              <div style={{ fontWeight: 800, marginBottom: 4 }}>AI Suggested Entry Zone available</div>
+              <div style={{ color: "var(--muted)", fontSize: 12, marginBottom: 10 }}>View research-only entry analysis.</div>
+              <button className="btn btn-blue" onClick={() => setShowGuestZoneDisclaimer(true)}>View AI Analysis</button>
+            </div>
           )}
           {!guest && result.confirmation_4h && (
             <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap", fontSize: 12, color: "var(--text2)" }}>
@@ -975,6 +1028,24 @@ function SingleTickerCheck({ guest = false }) {
           {result.analysis && (
             <div style={{ marginTop: 10, fontSize: 13, lineHeight: 1.6, color: "var(--text2)", whiteSpace: "pre-wrap" }}>{result.analysis}</div>
           )}
+        </div>
+      )}
+      {showGuestZoneDisclaimer && (
+        <div className="modal-overlay" onClick={() => setShowGuestZoneDisclaimer(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-title">AI Research Disclaimer</div>
+            <div style={{ color: "var(--text2)", fontSize: 13, lineHeight: 1.6, display: "grid", gap: 10 }}>
+              <p style={{ margin: 0 }}>
+                This Suggested Entry Zone is generated by AI for research and educational purposes only. It is not financial advice, a recommendation to buy or sell, or a guarantee of performance.
+              </p>
+              <p style={{ margin: 0 }}>
+                Stock trading involves risk, and you are responsible for doing your own due diligence before making any investment decision. SwingAI and its operators are not responsible for any trading losses or decisions made based on this analysis.
+              </p>
+            </div>
+            <div className="modal-actions">
+              <button className="btn btn-blue" onClick={acceptGuestZoneDisclaimer}>I Understand</button>
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -1512,7 +1583,7 @@ function PortfolioLiveAnalysisPanel({ data, error }) {
           ["Live Stop", fmtMoney(live.live_stop)],
           ["Live R:R", fmtRR(live.live_risk_reward)],
           ["Live Signal", live.live_signal || "-"],
-          ["Analysis Time", live.analysis_time ? new Date(live.analysis_time).toLocaleString() : "-"],
+          ["Analysis Time", formatLocalDateTime(live.analysis_time)],
         ]} />
         {(live.live_reasons || []).length > 0 && (
           <div className="signals-list" style={{ marginTop: 10 }}>
@@ -1580,14 +1651,48 @@ function PortfolioPage({ positions, onRefresh }) {
   };
 
   const saveEdit = async () => {
+    if (!editPos?.id) return;
+    const toOptionalNumber = value => {
+      if (value === "" || value === null || value === undefined) return null;
+      const n = Number(value);
+      return Number.isFinite(n) ? n : NaN;
+    };
+    const toRequiredNumber = (value, label) => {
+      const n = Number(value);
+      if (!Number.isFinite(n)) throw new Error(`${label} must be a valid number.`);
+      return n;
+    };
+
+    let payload;
+    try {
+      payload = {
+        entry_price: toRequiredNumber(editPos.entry_price, "Entry"),
+        quantity: Math.trunc(toRequiredNumber(editPos.quantity, "Quantity")),
+        target_price: toOptionalNumber(editPos.target_price),
+        stop_loss: toOptionalNumber(editPos.stop_loss),
+        score_at_entry: toOptionalNumber(editPos.score_at_entry),
+        setup_at_entry: editPos.setup_at_entry || "",
+        notes: editPos.notes || "",
+      };
+      if (payload.quantity <= 0) throw new Error("Quantity must be greater than zero.");
+      if ([payload.target_price, payload.stop_loss, payload.score_at_entry].some(Number.isNaN)) {
+        throw new Error("Target, Stop, and Score must be valid numbers when entered.");
+      }
+    } catch (e) {
+      return flash(false, e.message);
+    }
+
+    setSaveErr("");
     setSaving(true);
     const { error } = await api(`/api/portfolio/${editPos.id}`, {
-      method: "PUT",
-      body: JSON.stringify({ target_price: editPos.target_price, stop_loss: editPos.stop_loss, notes: editPos.notes }),
+      method: "PATCH",
+      body: JSON.stringify(payload),
     });
     setSaving(false);
     if (error) return flash(false, `Update failed: ${error}`);
-    setEditPos(null); onRefresh();
+    flash(true, `${editPos.ticker} position updated.`);
+    setEditPos(null);
+    await onRefresh({ forcePortfolio: true });
   };
 
   const closePosition = async () => {
@@ -1769,7 +1874,7 @@ function PortfolioPage({ positions, onRefresh }) {
                             <button className="btn btn-blue" style={{ padding: "3px 8px", fontSize: 10 }} onClick={() => runLiveAnalysis(p)} disabled={liveLoading}>
                               {liveLoading ? "Analyzing..." : "Run Live Analysis"}
                             </button>
-                            <button className="btn btn-ghost" style={{ padding: "3px 8px", fontSize: 10 }} onClick={() => setEditPos({ ...p })}>Edit</button>
+                            <button className="btn btn-ghost" style={{ padding: "3px 8px", fontSize: 10 }} onClick={() => { setSaveErr(""); setSaveOk(""); setEditPos({ ...p }); }}>Edit</button>
                             <button className="btn btn-red" style={{ padding: "3px 8px", fontSize: 10 }} onClick={() => { setClosePos(p); setClosePrice(p.current_price?.toFixed(2) || ""); }}>Close</button>
                           </div>
                         </td>
@@ -1819,10 +1924,15 @@ function PortfolioPage({ positions, onRefresh }) {
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div className="modal-title">✏️ Edit — {editPos.ticker}</div>
             <div className="grid-2" style={{ gap: 10 }}>
-              <div><label>Target Price</label><input className="input" type="number" step="0.01" value={editPos.target_price || ""} onChange={e => setEditPos({ ...editPos, target_price: e.target.value })} /></div>
-              <div><label>Stop Loss</label><input className="input" type="number" step="0.01" value={editPos.stop_loss || ""} onChange={e => setEditPos({ ...editPos, stop_loss: e.target.value })} /></div>
+              <div><label>Entry Price</label><input className="input" type="number" step="0.01" value={editPos.entry_price ?? ""} onChange={e => setEditPos({ ...editPos, entry_price: e.target.value })} /></div>
+              <div><label>Quantity</label><input className="input" type="number" step="1" value={editPos.quantity ?? ""} onChange={e => setEditPos({ ...editPos, quantity: e.target.value })} /></div>
+              <div><label>Target Price</label><input className="input" type="number" step="0.01" value={editPos.target_price ?? ""} onChange={e => setEditPos({ ...editPos, target_price: e.target.value })} /></div>
+              <div><label>Stop Loss</label><input className="input" type="number" step="0.01" value={editPos.stop_loss ?? ""} onChange={e => setEditPos({ ...editPos, stop_loss: e.target.value })} /></div>
+              <div><label>Score at Entry</label><input className="input" type="number" step="1" value={editPos.score_at_entry ?? ""} onChange={e => setEditPos({ ...editPos, score_at_entry: e.target.value })} /></div>
+              <div><label>Setup at Entry</label><input className="input" value={editPos.setup_at_entry || ""} onChange={e => setEditPos({ ...editPos, setup_at_entry: e.target.value })} /></div>
             </div>
             <div style={{ marginTop: 10 }}><label>Notes</label><input className="input" value={editPos.notes || ""} onChange={e => setEditPos({ ...editPos, notes: e.target.value })} /></div>
+            {saveErr && <div className="err-box" style={{ marginTop: 10, marginBottom: 0 }}>{saveErr}</div>}
             <div className="modal-actions">
               <button className="btn btn-ghost" onClick={() => setEditPos(null)}>Cancel</button>
               <button className="btn btn-green" onClick={saveEdit} disabled={saving}>{saving ? "Saving…" : "Save"}</button>
