@@ -10,6 +10,8 @@ import heroBg from "./assets/swingai-hero-bg.jpg";
 const API_URL = import.meta.env.VITE_API_URL || "https://swingai-api-production.up.railway.app";
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "https://cpoumpdgmjbqhmjqrgec.supabase.co";
 const SUPABASE_ANON = import.meta.env.VITE_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNwb3VtcGRnbWpicWhtanFyZ2VjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk3MDcxNDcsImV4cCI6MjA5NTI4MzE0N30.q4-QleVM5flNGGltA7veVwrQq0e8NX-luz6eNdJ3lNs";
+const CONTACT_EMAIL = "seed2success.financial@outlook.com";
+const CONTACT_MAILTO = `mailto:${CONTACT_EMAIL}`;
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON);
 
@@ -105,12 +107,12 @@ const css = `
     --ui:       'Inter', sans-serif;
   }
 
-  html, body, #root { height: 100%; background: var(--bg); color: var(--text); font-family: var(--ui); overflow: hidden; }
-  body { font-size: 14px; line-height: 1.45; }
+  html, body, #root { min-height: 100%; background: var(--bg); color: var(--text); font-family: var(--ui); overflow-x: hidden; }
+  body { font-size: 14px; line-height: 1.45; overflow-y: auto; }
   ::-webkit-scrollbar { width: 7px; height: 7px; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.16); border-radius: 999px; }
-  .app { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+  .app { display: flex; flex-direction: column; min-height: 100dvh; overflow: visible; }
 
   .header { display: flex; align-items: center; gap: 18px; padding: 0 22px; min-height: 56px; background: rgba(13,17,24,0.96); border-bottom: 1px solid var(--border2); flex-shrink: 0; box-shadow: 0 1px 0 rgba(255,255,255,0.03); }
   .logo { font-family: var(--ui); font-weight: 800; font-size: 18px; letter-spacing: 0; background: linear-gradient(135deg, var(--green), #7CC2FF); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; flex-shrink: 0; }
@@ -126,8 +128,8 @@ const css = `
   .logout-btn { min-height: 28px; padding: 5px 10px; border-radius: 6px; border: 1px solid var(--border2); background: transparent; color: var(--muted); font-size: 11px; cursor: pointer; }
   .logout-btn:hover { border-color: var(--red); color: var(--red); }
 
-  .main { display: flex; flex: 1; overflow: hidden; }
-  .content { flex: 1; overflow-y: auto; padding: 22px; }
+  .main { display: flex; flex: 1 1 auto; min-height: 0; overflow: visible; }
+  .content { flex: 1; overflow-y: auto; padding: 22px; padding-bottom: calc(22px + env(safe-area-inset-bottom)); }
 
   .card { background: linear-gradient(180deg, rgba(255,255,255,0.025), rgba(255,255,255,0.005)), var(--bg2); border: 1px solid var(--border2); border-radius: 8px; padding: 18px; box-shadow: 0 12px 28px rgba(0,0,0,0.18); }
   .card-title { font-size: 11px; font-weight: 800; letter-spacing: 1.2px; text-transform: uppercase; color: var(--muted); margin-bottom: 14px; }
@@ -283,7 +285,7 @@ const css = `
   @keyframes chipFloat { 0%,100% { transform: translate3d(0,0,0); opacity: .66; } 50% { transform: translate3d(0,-7px,0); opacity: .95; } }
 
   @media (max-width: 900px) {
-    .content { padding: 18px; }
+    .content { padding: 18px; padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
     .grid-3, .grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .header { gap: 12px; }
     .header-right { gap: 8px; }
@@ -296,7 +298,7 @@ const css = `
     .header { flex-wrap: wrap; align-items: center; padding: 10px 14px; }
     .header-nav { order: 3; width: 100%; margin-left: 0; padding-bottom: 1px; }
     .header-right { margin-left: auto; }
-    .content { padding: 14px; }
+    .content { padding: 14px; padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
     .section-header { align-items: flex-start; flex-direction: column; gap: 10px; }
     .section-header > div:last-child { width: 100%; }
     .modal-actions { flex-wrap: wrap; }
@@ -439,7 +441,7 @@ const LEGAL_CONTENT = {
     title: "Contact Nexus Milestone Inc.",
     body: [
       "For SwingAI support or business inquiries, please contact Nexus Milestone Inc.",
-      "support@swingai.app",
+      CONTACT_EMAIL,
     ],
   },
 };
@@ -453,7 +455,9 @@ function LegalModal({ type, onClose }) {
         <div id="legal-modal-title" className="modal-title">{content.title}</div>
         <div className="legal-modal-body">
           {content.body.map((paragraph, i) => (
-            <p key={i}>{paragraph}</p>
+            <p key={i}>
+              {paragraph === CONTACT_EMAIL ? <a href={CONTACT_MAILTO}>{CONTACT_EMAIL}</a> : paragraph}
+            </p>
           ))}
         </div>
         <div className="modal-actions">
@@ -546,7 +550,7 @@ function TermsContent() {
       <p><b>Effective Date:</b> May 31, 2026</p>
       <p><b>Company:</b> Nexus Milestone Inc.</p>
       <p><b>Website/App Name:</b> SwingAI</p>
-      <p><b>Contact:</b> [Insert Email]</p>
+      <p><b>Contact:</b> <a href={CONTACT_MAILTO}>{CONTACT_EMAIL}</a></p>
       <p>These Website Terms of Use and Disclaimer apply to your access to and use of the public guest-view website, scanner results, AI-generated analysis, watchlists, tables, reports, charts, content, and related information provided by Nexus Milestone Inc. ("Nexus Milestone," "we," "us," or "our").</p>
       <p>By accessing or using this website, you agree to these Terms. If you do not agree, do not use this website.</p>
       {TERMS_SECTIONS.map(([title, text]) => (
@@ -731,6 +735,7 @@ function MarketTodayPage({ admin = false }) {
   const [error, setError] = useState("");
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState("");
+  const [refreshStatus, setRefreshStatus] = useState("");
 
   useEffect(() => {
     let mounted = true;
@@ -760,6 +765,7 @@ function MarketTodayPage({ admin = false }) {
     if (refreshing) return;
     setRefreshing(true);
     setRefreshError("");
+    setRefreshStatus("");
     const { data, error } = await api("/api/market-today/refresh", { method: "POST" });
     setRefreshing(false);
     if (error) {
@@ -768,6 +774,7 @@ function MarketTodayPage({ admin = false }) {
     }
     setMarket(data || null);
     setError("");
+    setRefreshStatus(data?.source ? `Market Today refreshed from ${data.source}.` : "Market Today refreshed.");
   };
 
   return (
@@ -780,7 +787,7 @@ function MarketTodayPage({ admin = false }) {
         chips={["BREADTH", "MOVERS", "VOLUME", "NEWS", "CACHE"]}
         showCta={false}
       />
-      {false && admin && (
+      {admin && (
         <div className="card" style={{ marginBottom: 14, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
           <div>
             <div className="card-title" style={{ marginBottom: 4 }}>Market Today Refresh</div>
@@ -790,6 +797,7 @@ function MarketTodayPage({ admin = false }) {
             {refreshing ? "Refreshing Market Today..." : "Refresh Market Today"}
           </button>
           {refreshError && <div className="err-box" style={{ width: "100%", marginBottom: 0 }}>{refreshError}</div>}
+          {refreshStatus && <div className="ok-box" style={{ width: "100%", marginBottom: 0 }}>{refreshStatus}</div>}
         </div>
       )}
 
@@ -1742,13 +1750,21 @@ function AlertsPage() {
   const [testMsg,     setTestMsg]     = useState("");
   const [sending,     setSending]     = useState(false);
   const [sendResult,  setSendResult]  = useState("");
+  const [historyMsg,  setHistoryMsg]  = useState("");
+  const [deletingId,  setDeletingId]  = useState("");
+  const [clearing,    setClearing]    = useState(false);
 
-  useEffect(() => {
+  const loadAlertHistory = useCallback(() => {
+    setLoading(true);
     api("/api/alerts/history").then(({ data, error }) => {
       if (!error && data?.alerts) setAlerts(data.alerts);
       setLoading(false);
     });
   }, []);
+
+  useEffect(() => {
+    loadAlertHistory();
+  }, [loadAlertHistory]);
 
   const runCheck = async () => {
     setChecking(true); setCheckResult(null); setCheckErr("");
@@ -1756,7 +1772,7 @@ function AlertsPage() {
     setChecking(false);
     if (error) return setCheckErr(`Check failed: ${error}`);
     setCheckResult(data);
-    api("/api/alerts/history").then(({ data }) => { if (data?.alerts) setAlerts(data.alerts); });
+    loadAlertHistory();
   };
 
   const sendTest = async () => {
@@ -1767,6 +1783,42 @@ function AlertsPage() {
     setSendResult(error ? `❌ Failed: ${error}` : "✅ Sent to Telegram!");
     if (!error) setTestMsg("");
     setTimeout(() => setSendResult(""), 4000);
+  };
+
+  const deleteAlertHistory = async (alert) => {
+    const id = alert?.id;
+    if (!id) {
+      setHistoryMsg("Cannot delete this record because it has no alert id.");
+      return;
+    }
+    if (!window.confirm("Delete this alert history record?")) return;
+    setDeletingId(String(id));
+    setHistoryMsg("");
+    const { error } = await api(`/api/alerts/history/${encodeURIComponent(id)}`, { method: "DELETE" });
+    setDeletingId("");
+    if (error) {
+      setHistoryMsg(`Delete failed: ${error}`);
+      return;
+    }
+    setAlerts(prev => prev.filter(a => String(a.id) !== String(id)));
+    setHistoryMsg("Alert history record deleted.");
+    setTimeout(() => setHistoryMsg(""), 3000);
+  };
+
+  const clearAlertHistory = async () => {
+    if (alerts.length === 0 || clearing) return;
+    if (!window.confirm("Delete all alert history records? This cannot be undone.")) return;
+    setClearing(true);
+    setHistoryMsg("");
+    const { error } = await api("/api/alerts/history", { method: "DELETE" });
+    setClearing(false);
+    if (error) {
+      setHistoryMsg(`Clear failed: ${error}`);
+      return;
+    }
+    setAlerts([]);
+    setHistoryMsg("Alert history cleared.");
+    setTimeout(() => setHistoryMsg(""), 3000);
   };
 
   return (
@@ -1802,19 +1854,28 @@ function AlertsPage() {
 
       <div className="section-header" style={{ marginBottom: 10 }}>
         <div className="section-title">Alert History</div>
+        <button className="btn btn-red" onClick={clearAlertHistory} disabled={clearing || alerts.length === 0} style={{ padding: "5px 10px", fontSize: 10 }}>
+          {clearing ? "Clearing..." : "Clear All History"}
+        </button>
       </div>
+      {historyMsg && <div className={historyMsg.includes("failed") || historyMsg.includes("Cannot") ? "err-box" : "ok-box"}>{historyMsg}</div>}
 
       {loading
         ? <div className="loader"><div className="spin" /><p>Loading…</p></div>
         : alerts.length === 0
           ? <div className="empty"><h3>No alerts yet</h3><p>Run a sell signal check or send a custom alert above</p></div>
           : alerts.map((a, i) => (
-            <div key={i} className={`alert-card alert-${a.type?.startsWith("BUY") ? "buy" : a.type?.includes("SELL") ? "sell" : "info"}`}>
+            <div key={a.id || i} className={`alert-card alert-${a.type?.startsWith("BUY") ? "buy" : a.type?.includes("SELL") ? "sell" : "info"}`}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
                 <span style={{ fontFamily: "var(--mono)", fontWeight: 700, fontSize: 13 }}>{a.ticker || "—"}</span>
-                <span className="badge" style={a.type?.startsWith("BUY") ? { color: "var(--green)", borderColor: "var(--green)", background: "rgba(0,255,178,.1)" } :
-                  a.type?.includes("SELL") ? { color: "var(--red)", borderColor: "var(--red)", background: "rgba(255,77,77,.1)" } :
-                  { color: "var(--blue)", borderColor: "var(--blue)" }}>{a.type}</span>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                  <span className="badge" style={a.type?.startsWith("BUY") ? { color: "var(--green)", borderColor: "var(--green)", background: "rgba(0,255,178,.1)" } :
+                    a.type?.includes("SELL") ? { color: "var(--red)", borderColor: "var(--red)", background: "rgba(255,77,77,.1)" } :
+                    { color: "var(--blue)", borderColor: "var(--blue)" }}>{a.type}</span>
+                  <button className="btn btn-red" onClick={() => deleteAlertHistory(a)} disabled={deletingId === String(a.id) || !a.id} style={{ minHeight: 24, padding: "3px 8px", fontSize: 10 }}>
+                    {deletingId === String(a.id) ? "Deleting..." : "Delete"}
+                  </button>
+                </div>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--muted)" }}>
                 <span>{a.price ? `@ $${parseFloat(a.price).toFixed(2)}` : ""}</span>
