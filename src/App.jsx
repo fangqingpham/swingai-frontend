@@ -957,6 +957,12 @@ function SingleTickerCheck({ guest = false }) {
           {result.signals?.length > 0 && (
             <div className="signals-list" style={{ marginTop: 10 }}>{result.signals.map((s, i) => <span key={i} className="signal-pill">{s}</span>)}</div>
           )}
+          {!guest && result.suggested_entry_zone && (
+            <SuggestedEntryZone
+              zone={result.suggested_entry_zone}
+              description="Research-only entry zone from this ticker check."
+            />
+          )}
           {!guest && result.confirmation_4h && (
             <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap", fontSize: 12, color: "var(--text2)" }}>
               <span className="tag">Primary indicators: 1D / Daily</span>
@@ -1013,7 +1019,7 @@ function GuestScreenerPage() {
           <div>
             <div style={{ fontSize: 22, fontWeight: 800 }}>Good quality tickers today</div>
             <p style={{ color: "var(--text2)", fontSize: 13, lineHeight: 1.6, maxWidth: 760, margin: "8px 0 0" }}>
-              This list is updated after the 10:30 AM and 1:00 PM ET market scans. SwingAI scans today's cached top 200 market tickers and ranks the strongest setups from highest to lowest by AI analysis. Guest view shows a fixed scan snapshot, so prices are not live-updated here.
+              This list is updated after the 10:30 AM and 1:00 PM ET market scans. SwingAI scans today's cached top 200 market tickers and ranks the strongest setups from highest to lowest by AI analysis. List and ranking are based on the latest scan. Visible prices refresh when available during market hours.
             </p>
             <div style={{ marginTop: 8, fontSize: 12, color: "var(--muted)" }}>Indicators based mainly on Daily candles</div>
           </div>
@@ -1360,6 +1366,165 @@ function ScreenerPage({ onScanComplete, readOnly = false }) {
 }
 
 // ─── Portfolio ────────────────────────────────────────────────────────────────
+const portfolioKey = p => String(p?.id || p?.ticker || "");
+const portfolioSymbol = p => String(p?.ticker || p?.symbol || "").toUpperCase();
+const fmtMoney = value => value == null || value === "" || Number.isNaN(Number(value)) ? "-" : `$${Number(value).toFixed(2)}`;
+const fmtNumber = value => value == null || value === "" || Number.isNaN(Number(value)) ? "-" : Number(value).toFixed(2);
+const fmtRR = value => value == null || value === "" || Number.isNaN(Number(value)) ? "-" : `1:${Number(value).toFixed(2)}`;
+const fmtMoneyDash = value => value == null || value === "" || Number.isNaN(Number(value)) ? "—" : `$${Number(value).toFixed(2)}`;
+const fmtRRDash = value => value == null || value === "" || Number.isNaN(Number(value)) ? "—" : `1:${Number(value).toFixed(2)}`;
+
+function DetailGrid({ items }) {
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 8 }}>
+      {items.map(([label, value]) => (
+        <div key={label} style={{ padding: 9, borderRadius: 6, background: "rgba(255,255,255,0.025)", border: "1px solid var(--border2)" }}>
+          <div style={{ fontSize: 10, color: "var(--muted)", textTransform: "uppercase", letterSpacing: .7, fontWeight: 800 }}>{label}</div>
+          <div style={{ marginTop: 4, fontFamily: "var(--mono)", color: "var(--text)" }}>{value}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SuggestedEntryZone({ zone, description = "Research-only entry zone from the current live analysis." }) {
+  if (!zone) return null;
+  const avoid = zone.entry_grade === "Avoid";
+  const gradeColor = zone.entry_grade === "A" ? "var(--green)" : zone.entry_grade === "B" ? "var(--green2)" : zone.entry_grade === "C" ? "var(--amber)" : "var(--red)";
+  const timingLabels = {
+    enter_now_aggressive: "Aggressive entry possible now",
+    wait_for_pullback: "Wait for pullback",
+    wait_for_confirmation: "Wait for confirmation",
+    avoid: "Avoid",
+  };
+  const timingLabel = timingLabels[zone.entry_timing] || "—";
+  const timingCaution = zone.entry_timing === "wait_for_pullback" || zone.entry_timing === "wait_for_confirmation";
+  const timingColor = zone.entry_timing === "enter_now_aggressive" ? "var(--green)" : timingCaution ? "var(--amber)" : "var(--red)";
+  const detailValue = (value, highlight = false, muted = false) => (
+    <span style={{
+      color: highlight ? "var(--green)" : muted ? "var(--muted)" : "var(--text)",
+      fontWeight: highlight ? 800 : 500,
+    }}>
+      {value}
+    </span>
+  );
+  const textBlock = (label, text, tone = "blue") => text ? (
+    <div style={{
+      marginTop: 10,
+      padding: "10px 12px",
+      borderRadius: 6,
+      background: tone === "amber" ? "rgba(251,176,36,0.08)" : "rgba(77,166,255,0.07)",
+      border: tone === "amber" ? "1px solid rgba(251,176,36,0.22)" : "1px solid rgba(77,166,255,0.18)",
+    }}>
+      <div style={{ fontSize: 10, color: "var(--muted)", textTransform: "uppercase", letterSpacing: .7, fontWeight: 800, marginBottom: 4 }}>{label}</div>
+      <div style={{ color: "var(--text2)", fontSize: 12, lineHeight: 1.55 }}>{text}</div>
+    </div>
+  ) : null;
+  return (
+    <div style={{ marginTop: 12, padding: 12, borderRadius: 8, background: "rgba(77,166,255,0.06)", border: "1px solid rgba(77,166,255,0.20)" }}>
+      <div style={{ fontWeight: 800, marginBottom: 3 }}>Suggested Entry Zone</div>
+      <div style={{ color: "var(--muted)", fontSize: 11, marginBottom: 10 }}>{description}</div>
+      {avoid ? (
+        <div>
+          <div className="badge" style={{ color: "var(--amber)", borderColor: "var(--amber)", marginBottom: 8 }}>No Suggested Entry Zone</div>
+          <div style={{ color: "var(--text2)", fontSize: 12, lineHeight: 1.5 }}>{zone.bot_suggestion || zone.entry_reason || "No suggested entry zone generated."}</div>
+          {zone.confirmation_note && (
+            <div style={{ marginTop: 8, color: "var(--muted)", fontSize: 12, lineHeight: 1.5 }}>{zone.confirmation_note}</div>
+          )}
+          {(zone.risk_notes || []).length > 0 && (
+            <ul style={{ marginTop: 8, paddingLeft: 18, color: "var(--muted)", fontSize: 12, lineHeight: 1.6 }}>
+              {zone.risk_notes.map((note, i) => <li key={i}>{note}</li>)}
+            </ul>
+          )}
+        </div>
+      ) : (
+        <>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+            <span className="badge" style={{ color: gradeColor, borderColor: gradeColor, background: "rgba(255,255,255,0.035)", fontSize: 12, minHeight: 26, padding: "3px 11px" }}>
+              Grade {zone.entry_grade || "—"}
+            </span>
+            <span className="badge" style={{ color: timingColor, borderColor: timingColor, background: "rgba(255,255,255,0.035)", fontSize: 12, minHeight: 26, padding: "3px 11px" }}>
+              {timingLabel}
+            </span>
+            <span className="badge" style={{ color: "var(--blue)", borderColor: "rgba(77,166,255,0.45)", background: "rgba(77,166,255,0.08)", fontSize: 12, minHeight: 26, padding: "3px 11px" }}>
+              Confidence {zone.confidence || "—"}
+            </span>
+          </div>
+          <DetailGrid items={[
+            ["Entry Grade", detailValue(zone.entry_grade || "—")],
+            ["Entry Timing", detailValue(timingLabel)],
+            ["Confidence", detailValue(zone.confidence || "—")],
+            ["Aggressive Entry", detailValue(fmtMoneyDash(zone.aggressive_entry), false, timingCaution)],
+            ["Conservative Entry", fmtMoneyDash(zone.conservative_entry)],
+            ["Preferred Entry", detailValue(fmtMoneyDash(zone.preferred_entry), true)],
+            ["Ideal Stop", fmtMoneyDash(zone.ideal_stop)],
+            ["Target", fmtMoneyDash(zone.target)],
+            ["Aggressive R:R", fmtRRDash(zone.risk_reward_aggressive)],
+            ["Conservative R:R", fmtRRDash(zone.risk_reward_conservative)],
+          ]} />
+          {timingCaution && (
+            <div style={{ marginTop: 10, padding: "9px 11px", borderRadius: 6, background: "rgba(251,176,36,0.08)", border: "1px solid rgba(251,176,36,0.22)", color: "var(--amber)", fontSize: 12, lineHeight: 1.5 }}>
+              Aggressive entry has higher timing risk. Preferred entry is the conservative zone or a stronger confirmation trigger.
+            </div>
+          )}
+          {textBlock("Bot Suggestion", zone.bot_suggestion, timingCaution ? "amber" : "blue")}
+          {textBlock("Confirmation Note", zone.confirmation_note, timingCaution ? "amber" : "blue")}
+          {textBlock("Entry Reason", zone.entry_reason)}
+          {(zone.risk_notes || []).length > 0 && (
+            <ul style={{ marginTop: 8, paddingLeft: 18, color: "var(--muted)", fontSize: 12, lineHeight: 1.6 }}>
+              {zone.risk_notes.map((note, i) => <li key={i}>{note}</li>)}
+            </ul>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function PortfolioLiveAnalysisPanel({ data, error }) {
+  if (error) return <div className="err-box" style={{ margin: 0 }}>{error}</div>;
+  if (!data) return null;
+  const plan = data.position_plan || {};
+  const live = data.live_analysis || {};
+  return (
+    <div style={{ display: "grid", gap: 12 }}>
+      <div style={{ padding: 12, borderRadius: 8, background: "rgba(255,255,255,0.018)", border: "1px solid var(--border2)" }}>
+        <div style={{ fontWeight: 800, marginBottom: 3 }}>Position Plan</div>
+        <div style={{ color: "var(--muted)", fontSize: 11, marginBottom: 10 }}>Original saved trade plan. This is not changed by Live Analysis.</div>
+        <DetailGrid items={[
+          ["Entry", fmtMoney(plan.entry_price)],
+          ["Target", fmtMoney(plan.target_price)],
+          ["Stop", fmtMoney(plan.stop_loss)],
+          ["Score at Entry", plan.score_at_entry ?? "-"],
+          ["Setup at Entry", plan.setup_at_entry || "-"],
+          ["R:R at Entry", fmtRR(plan.risk_reward_at_entry)],
+        ]} />
+      </div>
+      <div style={{ padding: 12, borderRadius: 8, background: "rgba(0,255,178,0.035)", border: "1px solid rgba(0,255,178,0.16)" }}>
+        <div style={{ fontWeight: 800, marginBottom: 3 }}>Live Analysis</div>
+        <div style={{ color: "var(--muted)", fontSize: 11, marginBottom: 10 }}>Current market analysis. This does not overwrite your saved Position Plan.</div>
+        {live.status === "failed" && <div className="err-box">Live analysis failed. {(live.live_reasons || []).join(" ")}</div>}
+        <DetailGrid items={[
+          ["Current Price", fmtMoney(live.current_price)],
+          ["Live Score", live.live_score ?? "-"],
+          ["Live Setup", live.live_setup || "-"],
+          ["Live Target", fmtMoney(live.live_target)],
+          ["Live Stop", fmtMoney(live.live_stop)],
+          ["Live R:R", fmtRR(live.live_risk_reward)],
+          ["Live Signal", live.live_signal || "-"],
+          ["Analysis Time", live.analysis_time ? new Date(live.analysis_time).toLocaleString() : "-"],
+        ]} />
+        {(live.live_reasons || []).length > 0 && (
+          <div className="signals-list" style={{ marginTop: 10 }}>
+            {live.live_reasons.slice(0, 8).map((reason, i) => <span key={i} className="signal-pill">{reason}</span>)}
+          </div>
+        )}
+        <SuggestedEntryZone zone={live.suggested_entry_zone} />
+      </div>
+    </div>
+  );
+}
+
 function PortfolioPage({ positions, onRefresh }) {
   const [showAdd, setShowAdd] = useState(false);
   const [editPos, setEditPos] = useState(null);
@@ -1372,6 +1537,9 @@ function PortfolioPage({ positions, onRefresh }) {
   const [singleScan, setSingleScan] = useState(null);
   const [singleScanErr, setSingleScanErr] = useState("");
   const [singleScanLoading, setSingleScanLoading] = useState(false);
+  const [liveAnalysis, setLiveAnalysis] = useState({});
+  const [liveAnalysisLoading, setLiveAnalysisLoading] = useState("");
+  const [liveAnalysisError, setLiveAnalysisError] = useState({});
   const [form, setForm] = useState({
     ticker: "", entry_price: "", quantity: "",
     entry_date: new Date().toISOString().split("T")[0],
@@ -1449,6 +1617,29 @@ function PortfolioPage({ positions, onRefresh }) {
       return;
     }
     setSingleScan(data);
+  };
+
+  const runLiveAnalysis = async (position) => {
+    const symbol = portfolioSymbol(position);
+    const key = portfolioKey(position) || symbol;
+    if (!symbol || liveAnalysisLoading === key) return;
+    setLiveAnalysisLoading(key);
+    setLiveAnalysisError(prev => ({ ...prev, [key]: "" }));
+    const { data, error } = await api("/api/portfolio/live-analysis", {
+      method: "POST",
+      body: JSON.stringify({
+        symbol,
+        position_id: position.id || null,
+      }),
+    });
+    setLiveAnalysisLoading("");
+    if (error || data?.live_analysis?.status === "failed") {
+      const message = error || (data?.live_analysis?.live_reasons || []).join(" ") || "Live analysis failed.";
+      setLiveAnalysis(prev => data ? { ...prev, [key]: data } : prev);
+      setLiveAnalysisError(prev => ({ ...prev, [key]: message }));
+      return;
+    }
+    setLiveAnalysis(prev => ({ ...prev, [key]: data }));
   };
 
   return (
@@ -1538,9 +1729,13 @@ function PortfolioPage({ positions, onRefresh }) {
                 </thead>
                 <tbody>
                   {open.map((p, i) => {
+                    const key = portfolioKey(p) || `${portfolioSymbol(p)}-${i}`;
+                    const live = liveAnalysis[key];
+                    const liveErr = liveAnalysisError[key];
+                    const liveLoading = liveAnalysisLoading === key;
                     const badge = URGENCY_BADGE[p.sell_urgency || 0];
-                    return (
-                      <tr key={i}>
+                    return [
+                      <tr key={key}>
                         <td style={{ fontWeight: 700, fontSize: 13 }}>{p.ticker}</td>
                         <td>${parseFloat(p.entry_price).toFixed(2)}</td>
                         <td>
@@ -1571,12 +1766,22 @@ function PortfolioPage({ positions, onRefresh }) {
                         </td>
                         <td>
                           <div style={{ display: "flex", gap: 4 }}>
+                            <button className="btn btn-blue" style={{ padding: "3px 8px", fontSize: 10 }} onClick={() => runLiveAnalysis(p)} disabled={liveLoading}>
+                              {liveLoading ? "Analyzing..." : "Run Live Analysis"}
+                            </button>
                             <button className="btn btn-ghost" style={{ padding: "3px 8px", fontSize: 10 }} onClick={() => setEditPos({ ...p })}>Edit</button>
                             <button className="btn btn-red" style={{ padding: "3px 8px", fontSize: 10 }} onClick={() => { setClosePos(p); setClosePrice(p.current_price?.toFixed(2) || ""); }}>Close</button>
                           </div>
                         </td>
-                      </tr>
-                    );
+                      </tr>,
+                      (live || liveErr) && (
+                        <tr key={`${key}-live`}>
+                          <td colSpan={12} style={{ whiteSpace: "normal", background: "rgba(255,255,255,0.012)", padding: 14 }}>
+                            <PortfolioLiveAnalysisPanel data={live} error={liveErr} />
+                          </td>
+                        </tr>
+                      )
+                    ];
                   })}
                 </tbody>
               </table>
