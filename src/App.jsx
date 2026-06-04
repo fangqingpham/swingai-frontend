@@ -5,6 +5,8 @@ import {
   XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine,
 } from "recharts";
 import heroBg from "./assets/swingai-hero-bg.jpg";
+import SurveyAdmin from "./SurveyAdmin.jsx";
+import SurveyModal from "./SurveyModal.jsx";
 
 // ─── Config ─────────────────────────────────────────────────────────────────
 const API_URL = import.meta.env.VITE_API_URL || "https://swingai-api-production.up.railway.app";
@@ -1982,6 +1984,39 @@ function GuestReadOnlyPage() {
   const [disclaimerAccepted, setDisclaimerAccepted] = useState(hasAcceptedGuestTerms);
   const [showTerms, setShowTerms] = useState(false);
   const [legalModal, setLegalModal] = useState(null);
+  const [showSurvey, setShowSurvey] = useState(false);
+
+  useEffect(() => {
+    if (!disclaimerAccepted) return;
+    let cancelled = false;
+    fetch("/api/visit")
+      .then(r => r.json())
+      .then(d => { if (!cancelled && d?.show_survey) setShowSurvey(true); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [disclaimerAccepted]);
+
+  const markSurveyDone = () => {
+    fetch("/api/visit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "survey_done" }) }).catch(() => {});
+  };
+  const recordSurvey = async (payload) => {
+    try {
+      await supabase.from("survey_responses").insert({
+        user_id: null,
+        overall_rating: payload.overall_rating,
+        continued: payload.continued,
+        ease_of_use: payload.ease_of_use,
+        tenure: payload.tenure,
+        portfolio_change: payload.portfolio_change,
+        ai_analysis_accuracy: payload.ai_analysis_accuracy,
+        would_recommend: payload.would_recommend,
+        improvement_feedback: payload.improvement_feedback,
+      });
+    } catch (e) { /* ignore insert errors */ }
+    markSurveyDone();
+  };
+  const closeSurvey = () => { markSurveyDone(); setShowSurvey(false); };
+
   const tabs = [
     { id: "dashboard", label: "MARKET TODAY", locked: false },
     { id: "screener",  label: "SCREENER",  locked: false },
@@ -2052,6 +2087,9 @@ function GuestReadOnlyPage() {
         <GuestDisclaimerModal readOnlyTerms onClose={() => setShowTerms(false)} />
       )}
       {legalModal && <LegalModal type={legalModal} onClose={() => setLegalModal(null)} />}
+      {disclaimerAccepted && showSurvey && (
+        <SurveyModal onSubmit={recordSurvey} onClose={closeSurvey} />
+      )}
     </>
   );
 }
@@ -2112,16 +2150,18 @@ export default function App() {
     { id: "portfolio", label: "Portfolio" + (urgent > 0 ? ` ⚠️${urgent}` : "") },
     { id: "history",   label: "History" },
     { id: "alerts",    label: "Alerts" },
+    { id: "feedback",  label: "Feedback" },
     { id: "settings",  label: "Settings" },
   ];
 
-  const titles = { dashboard: "Market Today", screener: "Stock Screener", portfolio: "Portfolio Monitor", history: "Trade History", alerts: "Telegram Alerts", settings: "Settings" };
+  const titles = { dashboard: "Market Today", screener: "Stock Screener", portfolio: "Portfolio Monitor", history: "Trade History", alerts: "Telegram Alerts", feedback: "User Feedback", settings: "Settings" };
   const subs   = {
     screener:  "Find high-probability setups · Score ≥70 = quality entry",
     portfolio: "Track open positions · AI checks for sell signals",
     dashboard: "Updated by scheduled Market Today cache refreshes",
     history:   "Closed trades and win rate statistics",
     alerts:    "Telegram alert history and manual controls",
+    feedback:  "Survey ratings and responses from your users",
     settings:  "API status and configuration",
   };
 
@@ -2161,6 +2201,7 @@ export default function App() {
             {tab === "history"   && <HistoryPage />}
             {tab === "alerts"    && <AlertsPage />}
             {tab === "settings"  && <SettingsPage />}
+            {tab === "feedback"  && <SurveyAdmin supabase={supabase} />}
             <AppFooter onOpenLegal={setLegalModal} />
           </div>
         </main>
