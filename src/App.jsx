@@ -78,6 +78,14 @@ const SCORE_COLOR = (score) =>
 
 const PNL_COLOR = (pnl) => pnl >= 0 ? "#00FFB2" : "#FF4D4D";
 
+const confidenceValue = item => item?.estimated_confidence ?? item?.win_rate ?? item?.score?.estimated_confidence ?? item?.score?.win_rate;
+const formatConfidence = item => {
+  const value = confidenceValue(item);
+  return value == null || value === "" || Number.isNaN(Number(value)) ? "-" : `${Number(value).toFixed(0)}%`;
+};
+const compactStatus = value => String(value || "-").replaceAll("_", " ");
+const listItems = value => Array.isArray(value) ? value.filter(Boolean) : value ? [value] : [];
+
 const URGENCY_BADGE = {
   0: { label: "HOLD",    bg: "rgba(0,255,178,0.15)", text: "#00FFB2", border: "#00FFB2" },
   1: { label: "WATCH",   bg: "rgba(251,191,36,0.15)", text: "#FBB024", border: "#FBB024" },
@@ -1020,6 +1028,7 @@ function SingleTickerCheck({ guest = false }) {
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
             <b style={{ fontFamily: "var(--mono)", fontSize: 16 }}>{result.ticker || ticker.toUpperCase()}</b>
             {score !== undefined && <span className="badge" style={{ color: SCORE_COLOR(score), borderColor: SCORE_COLOR(score) }}>Score {score}</span>}
+            {confidenceValue(result) != null && <span className="badge">Confidence {formatConfidence(result)}</span>}
             {setup && <span className="badge">{setup}</span>}
             {price && <span style={{ fontFamily: "var(--mono)", fontSize: 13 }}>${Number(price).toFixed(2)}</span>}
             {!guest && <EntryWatchButton analysis={result} compact />}
@@ -1046,13 +1055,20 @@ function SingleTickerCheck({ guest = false }) {
           {result.signals?.length > 0 && (
             <div className="signals-list" style={{ marginTop: 10 }}>{result.signals.map((s, i) => <span key={i} className="signal-pill">{s}</span>)}</div>
           )}
+          {confidenceValue(result) != null && (
+            <div style={{ marginTop: 8, fontSize: 11, color: "var(--muted)" }}>
+              Estimated confidence, not historical win rate.
+            </div>
+          )}
           {canShowSuggestedZone && (
             <SuggestedEntryZone
               zone={suggestedZone}
               description="Research-only entry zone from this ticker check."
               action={!guest ? <EntryWatchButton analysis={result} /> : null}
+              entrySignal={result.entry_signal}
             />
           )}
+          {(!guest || guestZoneAccepted) && <DecisionLayerSections analysis={result} compact={guest} />}
           {guest && suggestedZone && !guestZoneAccepted && (
             <div style={{ marginTop: 12, padding: 12, borderRadius: 8, border: "1px solid var(--border2)", background: "rgba(0,170,255,0.06)" }}>
               <div style={{ fontWeight: 800, marginBottom: 4 }}>AI Suggested Entry Zone available</div>
@@ -1292,7 +1308,7 @@ function ScreenerPage({ onScanComplete, readOnly = false }) {
   const setups   = ["All", ...new Set(results.map(r => r.setup).filter(Boolean))];
   const filtered = results
     .filter(r => filterSetup === "All" || r.setup === filterSetup)
-    .sort((a, b) => sortBy === "score" ? b.score - a.score : sortBy === "winrate" ? b.win_rate - a.win_rate : b.price - a.price);
+    .sort((a, b) => sortBy === "score" ? b.score - a.score : sortBy === "winrate" ? (confidenceValue(b) || 0) - (confidenceValue(a) || 0) : b.price - a.price);
 
   return (
     <div className="fade-up">
@@ -1351,7 +1367,7 @@ function ScreenerPage({ onScanComplete, readOnly = false }) {
             <button key={s} onClick={() => setFilterSetup(s)} className="btn btn-ghost" style={{ padding: "3px 10px", fontSize: 10, ...(filterSetup === s ? { borderColor: "var(--green)", color: "var(--green)" } : {}) }}>{s}</button>
           ))}
           <div style={{ marginLeft: "auto", display: "flex", gap: 4 }}>
-            {[["score", "Score"], ["winrate", "Win Rate"], ["price", "Price"]].map(([k, l]) => (
+            {[["score", "Score"], ["winrate", "Confidence"], ["price", "Price"]].map(([k, l]) => (
               <button key={k} onClick={() => setSortBy(k)} className="btn btn-ghost" style={{ padding: "3px 10px", fontSize: 10, ...(sortBy === k ? { borderColor: "var(--blue)", color: "var(--blue)" } : {}) }}>{l}</button>
             ))}
           </div>
@@ -1395,7 +1411,7 @@ function ScreenerPage({ onScanComplete, readOnly = false }) {
           <div className="table-wrap">
             <table>
               <thead>
-                <tr><th>Ticker</th><th>Price</th><th>Chg%</th><th>Score</th><th>Win Rate</th><th>Setup</th><th>RSI</th><th>Vol</th><th>Target</th><th>Stop</th><th>Actions</th></tr>
+                <tr><th>Ticker</th><th>Price</th><th>Chg%</th><th>Score</th><th>Confidence</th><th>Setup</th><th>RSI</th><th>Vol</th><th>Target</th><th>Stop</th><th>Actions</th></tr>
               </thead>
               <tbody>
                 {filtered.map((r, i) => {
@@ -1406,7 +1422,10 @@ function ScreenerPage({ onScanComplete, readOnly = false }) {
                     <td>{displayPrice == null || displayPrice === "" ? "-" : `$${typeof displayPrice === "number" ? displayPrice.toFixed(2) : displayPrice}`}</td>
                     <td><span style={{ color: (r.change_pct || 0) >= 0 ? "var(--green)" : "var(--red)" }}>{(r.change_pct || 0) >= 0 ? "+" : ""}{(r.change_pct || 0).toFixed(2)}%</span></td>
                     <td><ScoreGauge score={r.score} /></td>
-                    <td><span style={{ color: SCORE_COLOR(r.score), fontWeight: 700 }}>{r.win_rate}%</span></td>
+                    <td>
+                      <span style={{ color: SCORE_COLOR(r.score), fontWeight: 700 }}>{formatConfidence(r)}</span>
+                      <div style={{ marginTop: 3, fontSize: 10, color: "var(--muted)", lineHeight: 1.3 }}>Estimated</div>
+                    </td>
                     <td>
                       <span className="tag">{r.setup}</span>
                       {r.confirmation_timeframe && (
@@ -1414,6 +1433,12 @@ function ScreenerPage({ onScanComplete, readOnly = false }) {
                           4H: {r.confirmation_4h?.setup || "confirmation"}
                         </div>
                       )}
+                      <div style={{ marginTop: 5, display: "flex", gap: 4, flexWrap: "wrap" }}>
+                        {r.analysis_timeframe_summary?.trade_readiness && <span className="tag" style={{ fontSize: 10 }}>{compactStatus(r.analysis_timeframe_summary.trade_readiness)}</span>}
+                        {r.risk_structure?.stop_quality && <span className="tag" style={{ fontSize: 10 }}>Stop {compactStatus(r.risk_structure.stop_quality)}</span>}
+                        {r.target_realism?.rating && <span className="tag" style={{ fontSize: 10 }}>Target {compactStatus(r.target_realism.rating)}</span>}
+                        {r.entry_signal?.status && <span className="tag" style={{ fontSize: 10 }}>{compactStatus(r.entry_signal.status)} / {compactStatus(r.entry_signal.action)}</span>}
+                      </div>
                     </td>
                     <td><span style={{ color: (r.rsi || 50) < 35 ? "var(--green)" : (r.rsi || 50) > 70 ? "var(--red)" : "var(--text2)" }}>{r.rsi?.toFixed(0) || "–"}</span></td>
                     <td><span style={{ color: (r.vol_ratio || 0) > 1.5 ? "var(--amber)" : "var(--text2)" }}>{r.vol_ratio?.toFixed(1) || "–"}x</span></td>
@@ -1455,7 +1480,7 @@ function ScreenerPage({ onScanComplete, readOnly = false }) {
                   ? <>
                       <div style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
                         <div style={{ background: "var(--bg3)", padding: "6px 12px", borderRadius: 6, fontSize: 12 }}>Score: <b style={{ color: SCORE_COLOR(analysis.score?.score || 0) }}>{analysis.score?.score}/100</b></div>
-                        <div style={{ background: "var(--bg3)", padding: "6px 12px", borderRadius: 6, fontSize: 12 }}>Win Rate: <b style={{ color: "var(--green)" }}>{analysis.score?.win_rate}%</b></div>
+                        <div style={{ background: "var(--bg3)", padding: "6px 12px", borderRadius: 6, fontSize: 12 }}>Confidence: <b style={{ color: "var(--green)" }}>{formatConfidence(analysis)}</b></div>
                         <div style={{ background: "var(--bg3)", padding: "6px 12px", borderRadius: 6, fontSize: 12 }}>Setup: <b>{analysis.score?.setup}</b></div>
                       </div>
                       <div style={{ fontSize: 13, lineHeight: 1.7, color: "var(--text2)", maxHeight: 300, overflowY: "auto", background: "var(--bg3)", padding: 14, borderRadius: 8, whiteSpace: "pre-wrap" }}>
@@ -1472,8 +1497,10 @@ function ScreenerPage({ onScanComplete, readOnly = false }) {
                           zone={analysis.suggested_entry_zone}
                           description="Research-only entry zone from this AI analysis."
                           action={<EntryWatchButton analysis={{ ...analysis, ticker: selected }} />}
+                          entrySignal={analysis.entry_signal}
                         />
                       )}
+                      <DecisionLayerSections analysis={analysis} />
                     </>
                   : null
             }
@@ -1627,7 +1654,93 @@ function DetailGrid({ items }) {
   );
 }
 
-function SuggestedEntryZone({ zone, description = "Research-only entry zone from the current live analysis.", action = null }) {
+function DecisionConditionList({ title, items }) {
+  const values = listItems(items);
+  if (!values.length) return null;
+  return (
+    <div style={{ marginTop: 8 }}>
+      <div style={{ fontSize: 10, color: "var(--muted)", textTransform: "uppercase", letterSpacing: .7, fontWeight: 800, marginBottom: 5 }}>{title}</div>
+      <div style={{ display: "grid", gap: 5 }}>
+        {values.map((item, i) => (
+          <div key={i} style={{ color: "var(--text2)", fontSize: 12, lineHeight: 1.45 }}>{item}</div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function DecisionLayerSections({ analysis, compact = false }) {
+  if (!analysis) return null;
+  const summary = analysis.analysis_timeframe_summary;
+  const entrySignal = analysis.entry_signal;
+  const risk = analysis.risk_structure;
+  const target = analysis.target_realism;
+  if (!summary && !entrySignal && !risk && !target) return null;
+  const sectionStyle = {
+    padding: compact ? 10 : 12,
+    borderRadius: 8,
+    background: "rgba(255,255,255,0.018)",
+    border: "1px solid var(--border2)",
+  };
+  return (
+    <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
+      {summary && (
+        <div style={sectionStyle}>
+          <div style={{ fontWeight: 800, marginBottom: 8 }}>Trade Readiness</div>
+          <DetailGrid items={[
+            ["Daily Context", summary.daily_context || "-"],
+            ["4H Setup", summary.four_hour_setup || "-"],
+            ["1H Entry", summary.one_hour_entry || "-"],
+            ["Trade Readiness", compactStatus(summary.trade_readiness)],
+            ["Expected Hold", summary.expected_holding_period || "-"],
+          ]} />
+        </div>
+      )}
+      {entrySignal && (
+        <div style={sectionStyle}>
+          <div style={{ fontWeight: 800, marginBottom: 8 }}>Entry Signal</div>
+          <DetailGrid items={[
+            ["Status", compactStatus(entrySignal.status)],
+            ["Action", compactStatus(entrySignal.action)],
+            ["Timeframe", entrySignal.timeframe_used || "-"],
+            ["Valid For", entrySignal.signal_valid_for || "-"],
+            ["Expected Hold", entrySignal.expected_holding_period || "-"],
+          ]} />
+          <DecisionConditionList title="Trigger Conditions" items={entrySignal.trigger_conditions} />
+          <DecisionConditionList title="Missing Conditions" items={entrySignal.missing_conditions} />
+          <DecisionConditionList title="Invalidation Conditions" items={entrySignal.invalidation_conditions} />
+          {entrySignal.entry_signal_reason && (
+            <div style={{ marginTop: 8, color: "var(--text2)", fontSize: 12, lineHeight: 1.5 }}>{entrySignal.entry_signal_reason}</div>
+          )}
+        </div>
+      )}
+      {risk && (
+        <div style={sectionStyle}>
+          <div style={{ fontWeight: 800, marginBottom: 8 }}>Risk Structure</div>
+          <DetailGrid items={[
+            ["Warning Level", risk.warning_level ?? "-"],
+            ["Hard Stop", fmtMoney(risk.hard_stop)],
+            ["Stop Quality", compactStatus(risk.stop_quality)],
+            ["Stop Distance", risk.stop_distance_pct == null ? "-" : `${Number(risk.stop_distance_pct).toFixed(2)}%`],
+            ["Stop ATR", risk.stop_atr_multiple == null ? "-" : Number(risk.stop_atr_multiple).toFixed(2)],
+            ["Invalidation", risk.invalidation_condition || "-"],
+          ]} />
+        </div>
+      )}
+      {target && (
+        <div style={sectionStyle}>
+          <div style={{ fontWeight: 800, marginBottom: 8 }}>Target Realism</div>
+          <DetailGrid items={[
+            ["Rating", compactStatus(target.rating)],
+            ["Reason", target.reason || "-"],
+          ]} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SuggestedEntryZone({ zone, description = "Research-only entry zone from the current live analysis.", action = null, entrySignal = null }) {
   if (!zone) return null;
   const avoid = zone.entry_grade === "Avoid";
   const gradeColor = zone.entry_grade === "A" ? "var(--green)" : zone.entry_grade === "B" ? "var(--green2)" : zone.entry_grade === "C" ? "var(--amber)" : "var(--red)";
@@ -1640,6 +1753,7 @@ function SuggestedEntryZone({ zone, description = "Research-only entry zone from
   const timingLabel = timingLabels[zone.entry_timing] || "—";
   const timingCaution = zone.entry_timing === "wait_for_pullback" || zone.entry_timing === "wait_for_confirmation";
   const timingColor = zone.entry_timing === "enter_now_aggressive" ? "var(--green)" : timingCaution ? "var(--amber)" : "var(--red)";
+  const entryNotConfirmed = entrySignal && entrySignal.status !== "confirmed";
   const detailValue = (value, highlight = false, muted = false) => (
     <span style={{
       color: highlight ? "var(--green)" : muted ? "var(--muted)" : "var(--text)",
@@ -1698,6 +1812,7 @@ function SuggestedEntryZone({ zone, description = "Research-only entry zone from
           <DetailGrid items={[
             ["Entry Grade", detailValue(zone.entry_grade || "—")],
             ["Entry Timing", detailValue(timingLabel)],
+            ["Trade Readiness", detailValue(compactStatus(zone.trade_readiness))],
             ["Confidence", detailValue(zone.confidence || "—")],
             ["Aggressive Entry", detailValue(fmtMoneyDash(zone.aggressive_entry), false, timingCaution)],
             ["Conservative Entry", fmtMoneyDash(zone.conservative_entry)],
@@ -1710,6 +1825,16 @@ function SuggestedEntryZone({ zone, description = "Research-only entry zone from
           {timingCaution && (
             <div style={{ marginTop: 10, padding: "9px 11px", borderRadius: 6, background: "rgba(251,176,36,0.08)", border: "1px solid rgba(251,176,36,0.22)", color: "var(--amber)", fontSize: 12, lineHeight: 1.5 }}>
               Aggressive entry has higher timing risk. Preferred entry is the conservative zone or a stronger confirmation trigger.
+            </div>
+          )}
+          {entryNotConfirmed && (
+            <div style={{ marginTop: 10, padding: "9px 11px", borderRadius: 6, background: "rgba(251,176,36,0.08)", border: "1px solid rgba(251,176,36,0.22)", color: "var(--amber)", fontSize: 12, lineHeight: 1.5 }}>
+              Entry zone exists, but entry signal is not confirmed yet.
+            </div>
+          )}
+          {zone.grade_adjustment_reason && (
+            <div style={{ marginTop: 10, padding: "9px 11px", borderRadius: 6, background: "rgba(77,166,255,0.07)", border: "1px solid rgba(77,166,255,0.18)", color: "var(--text2)", fontSize: 12, lineHeight: 1.5 }}>
+              {zone.grade_adjustment_reason}
             </div>
           )}
           {textBlock("Bot Suggestion", zone.bot_suggestion, timingCaution ? "amber" : "blue")}
@@ -1764,7 +1889,8 @@ function PortfolioLiveAnalysisPanel({ data, error }) {
             {live.live_reasons.slice(0, 8).map((reason, i) => <span key={i} className="signal-pill">{reason}</span>)}
           </div>
         )}
-        <SuggestedEntryZone zone={live.suggested_entry_zone} />
+        <SuggestedEntryZone zone={live.suggested_entry_zone} entrySignal={live.entry_signal} />
+        <DecisionLayerSections analysis={live} />
       </div>
     </div>
   );
@@ -1966,7 +2092,7 @@ function PortfolioPage({ positions, onRefresh }) {
             <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
               <div style={{ fontFamily: "var(--mono)", fontWeight: 700, fontSize: 16 }}>{singleScan.ticker}</div>
               {singleScan.score != null && <ScoreGauge score={singleScan.score} />}
-              {singleScan.win_rate != null && <span className="badge">{singleScan.win_rate}% WR</span>}
+              {confidenceValue(singleScan) != null && <span className="badge">Confidence {formatConfidence(singleScan)}</span>}
               {singleScan.setup && <span className="tag">{singleScan.setup}</span>}
               {singleScan.rescore_status && singleScan.rescore_status !== "ok" && <span className="badge">{singleScan.rescore_status}</span>}
             </div>
@@ -1982,6 +2108,11 @@ function PortfolioPage({ positions, onRefresh }) {
                 {singleScan.signals.slice(0, 5).map((s, i) => <span key={i} className="signal-pill">{s}</span>)}
               </div>
             )}
+            {confidenceValue(singleScan) != null && (
+              <div style={{ marginTop: 8, fontSize: 11, color: "var(--muted)" }}>Estimated confidence, not historical win rate.</div>
+            )}
+            <SuggestedEntryZone zone={singleScan.suggested_entry_zone} entrySignal={singleScan.entry_signal} />
+            <DecisionLayerSections analysis={singleScan} />
           </div>
         )}
       </div>
