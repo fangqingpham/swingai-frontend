@@ -1022,6 +1022,7 @@ function SingleTickerCheck({ guest = false }) {
             {score !== undefined && <span className="badge" style={{ color: SCORE_COLOR(score), borderColor: SCORE_COLOR(score) }}>Score {score}</span>}
             {setup && <span className="badge">{setup}</span>}
             {price && <span style={{ fontFamily: "var(--mono)", fontSize: 13 }}>${Number(price).toFixed(2)}</span>}
+            {!guest && <EntryWatchButton analysis={result} compact />}
           </div>
           <div className="table-wrap" style={{ marginTop: 12 }}>
             <table>
@@ -1049,6 +1050,7 @@ function SingleTickerCheck({ guest = false }) {
             <SuggestedEntryZone
               zone={suggestedZone}
               description="Research-only entry zone from this ticker check."
+              action={!guest ? <EntryWatchButton analysis={result} /> : null}
             />
           )}
           {guest && suggestedZone && !guestZoneAccepted && (
@@ -1418,8 +1420,9 @@ function ScreenerPage({ onScanComplete, readOnly = false }) {
                     <td style={{ color: "var(--green)" }}>${r.target?.toFixed(2)}</td>
                     <td style={{ color: "var(--red)" }}>${r.stop?.toFixed(2)}</td>
                     <td>
-                      <div style={{ display: "flex", gap: 4 }}>
+                      <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
                         <button className="btn btn-blue" style={{ padding: "4px 8px", fontSize: 10 }} onClick={() => analyzeStock(r.ticker)} disabled={readOnly}>AI</button>
+                        <EntryWatchButton analysis={r} compact disabled={readOnly} />
                         <button className="btn btn-amber" style={{ padding: "4px 8px", fontSize: 10 }} onClick={() => sendAlert(r.ticker)} disabled={readOnly || alertSent[r.ticker] === "sending"}>
                           {alertSent[r.ticker] === "sent" ? "✓" : alertSent[r.ticker] === "sending" ? "…" : "📲"}
                         </button>
@@ -1464,6 +1467,13 @@ function ScreenerPage({ onScanComplete, readOnly = false }) {
                           <div className="signals-list">{analysis.score.signals.map((s, i) => <span key={i} className="signal-pill">{s}</span>)}</div>
                         </div>
                       )}
+                      {analysis.suggested_entry_zone && (
+                        <SuggestedEntryZone
+                          zone={analysis.suggested_entry_zone}
+                          description="Research-only entry zone from this AI analysis."
+                          action={<EntryWatchButton analysis={{ ...analysis, ticker: selected }} />}
+                        />
+                      )}
                     </>
                   : null
             }
@@ -1487,6 +1497,123 @@ const fmtRR = value => value == null || value === "" || Number.isNaN(Number(valu
 const fmtMoneyDash = value => value == null || value === "" || Number.isNaN(Number(value)) ? "—" : `$${Number(value).toFixed(2)}`;
 const fmtRRDash = value => value == null || value === "" || Number.isNaN(Number(value)) ? "—" : `1:${Number(value).toFixed(2)}`;
 
+const fmtDateTime = value => {
+  if (!value) return "-";
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? "-" : d.toLocaleString();
+};
+const listify = value => {
+  if (!value) return [];
+  if (Array.isArray(value)) return value.filter(Boolean);
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed.filter(Boolean) : [value].filter(Boolean);
+    } catch {
+      return [value].filter(Boolean);
+    }
+  }
+  return [value].filter(Boolean);
+};
+const ENTRY_STATUS_LABELS = {
+  waiting_for_pullback: "Waiting for pullback",
+  waiting_for_1h_confirmation: "Waiting for 1H confirmation",
+  entry_confirmed: "Entry confirmed",
+  invalidated: "Invalidated",
+  expired: "Expired",
+  cancelled: "Cancelled",
+};
+const ENTRY_ACTION_LABELS = {
+  wait: "Wait",
+  watch: "Watch",
+  wait_for_pullback: "Wait for pullback",
+  wait_for_1h_confirmation: "Wait for 1H confirmation",
+  consider_entry: "Entry trigger confirmed. Review before buying.",
+  avoid: "Avoid",
+  cancelled: "Cancelled",
+};
+const entryStatusStyle = status => {
+  if (status === "entry_confirmed") return { color: "var(--green)", borderColor: "var(--green)", background: "rgba(0,255,178,.08)" };
+  if (["invalidated", "expired", "cancelled"].includes(status)) return { color: "var(--red)", borderColor: "var(--red)", background: "rgba(255,77,77,.08)" };
+  if (status === "waiting_for_pullback") return { color: "var(--amber)", borderColor: "var(--amber)", background: "rgba(251,176,36,.08)" };
+  return { color: "var(--blue)", borderColor: "var(--blue)", background: "rgba(77,166,255,.08)" };
+};
+const numberOrNull = value => value == null || value === "" || Number.isNaN(Number(value)) ? null : Number(value);
+const normalizeAnalysisForEntryWatch = source => {
+  if (!source) return {};
+  const scoreObj = source.score && typeof source.score === "object" ? source.score : null;
+  return {
+    ...source,
+    ticker: String(source.ticker || source.symbol || "").toUpperCase(),
+    score: scoreObj?.score ?? source.score,
+    setup: scoreObj?.setup ?? source.setup,
+    signals: source.signals || scoreObj?.signals || [],
+    current_price: source.current_price ?? source.price ?? source.scan_price ?? source.quote?.price,
+    target: source.target ?? source.target_price,
+    stop: source.stop ?? source.stop_loss,
+  };
+};
+const buildEntryWatchPayload = analysisInput => {
+  const analysis = normalizeAnalysisForEntryWatch(analysisInput);
+  const zone = analysis.suggested_entry_zone || {};
+  const ticker = String(analysis.ticker || "").trim().toUpperCase();
+  return {
+    ticker,
+    analysis,
+    setup: analysis.setup || "",
+    score: analysis.score == null ? null : Math.round(Number(analysis.score)),
+    confidence: zone.confidence || analysis.confidence || "",
+    watch_price: numberOrNull(analysis.current_price),
+    aggressive_entry: numberOrNull(zone.aggressive_entry),
+    conservative_entry: numberOrNull(zone.conservative_entry),
+    preferred_entry: numberOrNull(zone.preferred_entry),
+    ideal_stop: numberOrNull(zone.ideal_stop ?? analysis.stop),
+    target: numberOrNull(zone.target ?? analysis.target),
+    risk_reward: numberOrNull(zone.risk_reward_conservative ?? analysis.risk_reward),
+    entry_timing: zone.entry_timing || analysis.entry_timing || "wait_for_confirmation",
+  };
+};
+
+function EntryWatchButton({ analysis, onSaved, compact = false, disabled = false }) {
+  const [state, setState] = useState("idle");
+  const [message, setMessage] = useState("");
+  const payload = buildEntryWatchPayload(analysis);
+  const canSave = Boolean(payload.ticker);
+
+  const save = async () => {
+    if (!canSave || state === "saving") return;
+    setState("saving");
+    setMessage("");
+    const { data, error } = await api("/api/entry-watchlist", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    if (error) {
+      setState("error");
+      setMessage(error.includes("Not authenticated") || error.includes("401") ? "Sign in required." : error);
+      return;
+    }
+    setState("saved");
+    setMessage(data?.updated_existing ? "Watch updated." : "Added to Entry Watchlist.");
+    if (typeof onSaved === "function") onSaved(data?.watch);
+    setTimeout(() => {
+      setState("idle");
+      setMessage("");
+    }, 3500);
+  };
+
+  return (
+    <div style={{ display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+      <button className="btn btn-green" style={compact ? { padding: "4px 8px", fontSize: 10, minHeight: 26 } : undefined} onClick={save} disabled={disabled || !canSave || state === "saving"}>
+        {state === "saving" ? "Saving..." : state === "saved" ? "Watching" : "Watch Entry Signal"}
+      </button>
+      {message && (
+        <span style={{ fontSize: 11, color: state === "error" ? "var(--red)" : "var(--green)" }}>{message}</span>
+      )}
+    </div>
+  );
+}
+
 function DetailGrid({ items }) {
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 8 }}>
@@ -1500,12 +1627,12 @@ function DetailGrid({ items }) {
   );
 }
 
-function SuggestedEntryZone({ zone, description = "Research-only entry zone from the current live analysis." }) {
+function SuggestedEntryZone({ zone, description = "Research-only entry zone from the current live analysis.", action = null }) {
   if (!zone) return null;
   const avoid = zone.entry_grade === "Avoid";
   const gradeColor = zone.entry_grade === "A" ? "var(--green)" : zone.entry_grade === "B" ? "var(--green2)" : zone.entry_grade === "C" ? "var(--amber)" : "var(--red)";
   const timingLabels = {
-    enter_now_aggressive: "Aggressive entry possible now",
+    enter_now_aggressive: "Aggressive zone candidate",
     wait_for_pullback: "Wait for pullback",
     wait_for_confirmation: "Wait for confirmation",
     avoid: "Avoid",
@@ -1535,8 +1662,13 @@ function SuggestedEntryZone({ zone, description = "Research-only entry zone from
   ) : null;
   return (
     <div style={{ marginTop: 12, padding: 12, borderRadius: 8, background: "rgba(77,166,255,0.06)", border: "1px solid rgba(77,166,255,0.20)" }}>
-      <div style={{ fontWeight: 800, marginBottom: 3 }}>Suggested Entry Zone</div>
-      <div style={{ color: "var(--muted)", fontSize: 11, marginBottom: 10 }}>{description}</div>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", flexWrap: "wrap", marginBottom: 10 }}>
+        <div>
+          <div style={{ fontWeight: 800, marginBottom: 3 }}>Suggested Entry Zone</div>
+          <div style={{ color: "var(--muted)", fontSize: 11 }}>{description}</div>
+        </div>
+        {action}
+      </div>
       {avoid ? (
         <div>
           <div className="badge" style={{ color: "var(--amber)", borderColor: "var(--amber)", marginBottom: 8 }}>No Suggested Entry Zone</div>
@@ -2248,6 +2380,140 @@ function AlertsPage() {
 }
 
 // ─── Settings ─────────────────────────────────────────────────────────────────
+function ConditionList({ items }) {
+  const list = listify(items);
+  if (!list.length) return <span style={{ color: "var(--muted)" }}>-</span>;
+  return (
+    <div className="signals-list" style={{ minWidth: 220 }}>
+      {list.map((item, i) => <span key={i} className="signal-pill">{String(item)}</span>)}
+    </div>
+  );
+}
+
+function EntryWatchlistPage() {
+  const [watches, setWatches] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+  const [busyId, setBusyId] = useState("");
+  const [checking, setChecking] = useState(false);
+
+  const loadWatches = useCallback(async () => {
+    setError("");
+    const { data, error } = await api("/api/entry-watchlist");
+    if (error) {
+      setError(error);
+      setWatches([]);
+    } else {
+      setWatches(Array.isArray(data?.watches) ? data.watches : []);
+    }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { loadWatches(); }, [loadWatches]);
+
+  const cancelWatch = async watch => {
+    if (!watch?.id || busyId) return;
+    setBusyId(watch.id);
+    setError("");
+    setMessage("");
+    const { error } = await api(`/api/entry-watchlist/${watch.id}`, { method: "DELETE" });
+    setBusyId("");
+    if (error) {
+      setError(error);
+      return;
+    }
+    setMessage(`${watch.ticker} watch cancelled.`);
+    await loadWatches();
+  };
+
+  const checkWatches = async () => {
+    if (checking) return;
+    setChecking(true);
+    setError("");
+    setMessage("");
+    const { data, error } = await api("/api/entry-watchlist/check", { method: "POST" });
+    setChecking(false);
+    if (error) {
+      setError(error);
+      return;
+    }
+    setMessage(`Checked ${data?.checked ?? 0} entry watch${data?.checked === 1 ? "" : "es"}.`);
+    await loadWatches();
+  };
+
+  return (
+    <div className="fade-up">
+      <div className="section-header">
+        <div>
+          <div className="section-title">Entry Signal Watchlist</div>
+          <div className="section-sub">Pre-buy monitoring only. Move ideas to Portfolio after buying.</div>
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button className="btn btn-ghost" onClick={loadWatches} disabled={loading}>Refresh</button>
+          <button className="btn btn-blue" onClick={checkWatches} disabled={checking}>{checking ? "Checking..." : "Manual Check"}</button>
+        </div>
+      </div>
+
+      {error && <div className="err-box">{error}</div>}
+      {message && <div className="ok-box">{message}</div>}
+
+      {loading ? (
+        <div className="loader"><div className="spin" /><p>Loading Entry Watchlist...</p></div>
+      ) : watches.length === 0 ? (
+        <div className="empty">
+          <h3>No entry watches</h3>
+          <p>Use "Watch Entry Signal" from a ticker result before buying.</p>
+        </div>
+      ) : (
+        <div className="card" style={{ padding: 0 }}>
+          <div className="table-wrap">
+            <table style={{ minWidth: 1420 }}>
+              <thead>
+                <tr>
+                  <th>Ticker</th><th>Status</th><th>Setup</th><th>Score</th><th>Current</th><th>Preferred Entry</th><th>Target</th><th>Stop</th><th>Entry Timing</th><th>Signal Status</th><th>Signal Action</th><th>Trigger Conditions</th><th>Missing Conditions</th><th>Invalidation</th><th>Reason</th><th>Last Checked</th><th>Expires</th><th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {watches.map(w => {
+                  const status = w.status || "waiting_for_1h_confirmation";
+                  const confirmed = status === "entry_confirmed" || w.entry_signal_status === "confirmed";
+                  return (
+                    <tr key={w.id || `${w.ticker}-${w.created_at}`}>
+                      <td style={{ fontWeight: 800, fontSize: 13 }}>{String(w.ticker || "").toUpperCase()}</td>
+                      <td><span className="badge" style={entryStatusStyle(status)}>{ENTRY_STATUS_LABELS[status] || status || "-"}</span></td>
+                      <td>{w.setup || "-"}</td>
+                      <td>{w.score ?? w.confidence ?? "-"}</td>
+                      <td>{fmtMoney(w.current_price ?? w.watch_price)}</td>
+                      <td style={{ color: "var(--green)" }}>{fmtMoney(w.preferred_entry ?? w.conservative_entry)}</td>
+                      <td>{fmtMoney(w.target)}</td>
+                      <td style={{ color: "var(--red)" }}>{fmtMoney(w.ideal_stop)}</td>
+                      <td>{w.entry_timing || "-"}</td>
+                      <td>{w.entry_signal_status || "-"}</td>
+                      <td style={{ color: confirmed ? "var(--green)" : "var(--text2)" }}>{ENTRY_ACTION_LABELS[w.entry_signal_action] || w.entry_signal_action || "-"}</td>
+                      <td><ConditionList items={w.trigger_conditions} /></td>
+                      <td><ConditionList items={w.missing_conditions} /></td>
+                      <td><ConditionList items={w.invalidation_conditions} /></td>
+                      <td style={{ whiteSpace: "normal", minWidth: 220, lineHeight: 1.45 }}>{w.entry_signal_reason || "-"}</td>
+                      <td>{fmtDateTime(w.updated_at)}</td>
+                      <td>{fmtDateTime(w.expires_at)}</td>
+                      <td>
+                        <button className="btn btn-red" style={{ padding: "4px 8px", fontSize: 10 }} onClick={() => cancelWatch(w)} disabled={busyId === w.id || ["cancelled", "expired", "invalidated"].includes(status)}>
+                          {busyId === w.id ? "Cancelling..." : "Cancel"}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SettingsPage() {
   const [health,     setHealth]     = useState(null);
   const [healthErr,  setHealthErr]  = useState("");
@@ -2504,6 +2770,7 @@ export default function App() {
   const tabs = [
     { id: "dashboard", label: "Market Today" },
     { id: "screener",  label: "Screener" + (topToday > 0 ? ` (${topToday})` : "") },
+    { id: "entryWatch", label: "Entry Watchlist" },
     { id: "portfolio", label: "Portfolio" + (urgent > 0 ? ` ⚠️${urgent}` : "") },
     { id: "history",   label: "History" },
     { id: "alerts",    label: "Alerts" },
@@ -2511,8 +2778,9 @@ export default function App() {
     { id: "settings",  label: "Settings" },
   ];
 
-  const titles = { dashboard: "Market Today", screener: "Stock Screener", portfolio: "Portfolio Monitor", history: "Trade History", alerts: "Telegram Alerts", feedback: "User Feedback", settings: "Settings" };
+  const titles = { dashboard: "Market Today", screener: "Stock Screener", entryWatch: "Entry Signal Watchlist", portfolio: "Portfolio Monitor", history: "Trade History", alerts: "Telegram Alerts", feedback: "User Feedback", settings: "Settings" };
   const subs   = {
+    entryWatch: "Pre-buy entry timing confirmation. Portfolio starts after buying.",
     screener:  "Find high-probability setups · Score ≥70 = quality entry",
     portfolio: "Track open positions · AI checks for sell signals",
     dashboard: "Updated by scheduled Market Today cache refreshes",
@@ -2548,6 +2816,7 @@ export default function App() {
             </div>
             {tab === "dashboard" && <MarketTodayPage admin />}
             {tab === "screener"  && <ScreenerPage onScanComplete={loadData} />}
+            {tab === "entryWatch" && <EntryWatchlistPage />}
             {portfolioError && (
               <div className="card" style={{ borderColor: "rgba(239,68,68,.35)", marginBottom: 14 }}>
                 <div style={{ fontWeight: 700, marginBottom: 4 }}>Portfolio unavailable</div>
