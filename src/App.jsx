@@ -1078,9 +1078,10 @@ function SingleTickerCheck({ guest = false }) {
           )}
           {!guest && result.confirmation_4h && (
             <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap", fontSize: 12, color: "var(--text2)" }}>
-              <span className="tag">Primary indicators: 1D / Daily</span>
-              <span className="tag">Entry confirmation: 4H</span>
-              <span>4H setup: <b>{result.confirmation_4h.setup || "-"}</b></span>
+              <span className="tag">Daily Context: 1D</span>
+              <span className="tag">Main Setup: 4H</span>
+              <span className="tag">Entry Trigger: 1H</span>
+              <span>4H trade setup: <b>{result.confirmation_4h.setup || "-"}</b></span>
               <span>4H score: <b>{result.confirmation_4h.score ?? "-"}</b></span>
               <span>4H RSI: <b>{result.confirmation_4h.rsi == null ? "-" : Number(result.confirmation_4h.rsi).toFixed(0)}</b></span>
             </div>
@@ -1316,8 +1317,9 @@ function ScreenerPage({ onScanComplete, readOnly = false }) {
       <SingleTickerCheck />
 
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12, fontSize: 12, color: "var(--text2)" }}>
-        <span className="tag">Primary indicators: 1D / Daily</span>
-        <span className="tag">Entry confirmation: 4H</span>
+        <span className="tag">Daily Context: 1D</span>
+        <span className="tag">Main Setup: 4H</span>
+        <span className="tag">Entry Trigger: 1H</span>
       </div>
 
       <div className="card" style={{ marginBottom: 14 }}>
@@ -1430,7 +1432,7 @@ function ScreenerPage({ onScanComplete, readOnly = false }) {
                       <span className="tag">{r.setup}</span>
                       {r.confirmation_timeframe && (
                         <div style={{ marginTop: 4, fontSize: 10, color: "var(--muted)" }}>
-                          4H: {r.confirmation_4h?.setup || "confirmation"}
+                          4H setup: {r.confirmation_4h?.setup || "-"}
                         </div>
                       )}
                       <div style={{ marginTop: 5, display: "flex", gap: 4, flexWrap: "wrap" }}>
