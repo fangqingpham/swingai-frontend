@@ -84,6 +84,51 @@ const formatConfidence = item => {
   return value == null || value === "" || Number.isNaN(Number(value)) ? "-" : `${Number(value).toFixed(0)}%`;
 };
 const compactStatus = value => String(value || "-").replaceAll("_", " ");
+const timingLabel = value => ({
+  entry_ready: "Entry ready",
+  tradeable_now: "Entry ready",
+  wait_for_1h_confirmation: "Wait for 1H confirmation",
+  wait_for_confirmation: "Wait for 1H confirmation",
+  wait_for_pullback: "Watch only",
+  watch_only: "Watch only",
+  watch_for_entry: "Watch only",
+  avoid: "Avoid",
+  invalidated: "Invalidated",
+}[value] || compactStatus(value));
+const actionLabel = value => ({
+  enter_now: "Buy Watch",
+  consider_entry: "Buy Watch",
+  buy_signal_ready: "Buy signal ready",
+  wait_for_1h_confirmation: "Wait",
+  wait_for_pullback: "Watch only - wait for pullback and 1H confirmation",
+  watch: "Wait",
+  wait: "Wait",
+  avoid: "Avoid",
+  cancelled: "Cancelled",
+}[value] || compactStatus(value));
+const priceZoneLabel = value => ({
+  in_entry_zone: "In entry zone",
+  above_entry_zone: "Above entry zone",
+  below_entry_zone: "Below entry zone",
+  unavailable: "Unavailable",
+}[value] || (value === true ? "In entry zone" : value === false ? "Not in entry zone" : "-"));
+const confirmationLabel = value => value ? "Passed" : "Waiting";
+const normalizedWatchEntryTiming = row => {
+  const timing = row?.entry_timing;
+  const action = String(row?.entry_signal_action || "");
+  if (
+    timing === "avoid" &&
+    row?.status === "waiting_for_1h_confirmation" &&
+    row?.entry_signal_status === "pending" &&
+    action.startsWith("wait")
+  ) {
+    return "wait_for_1h_confirmation";
+  }
+  if (timing === "wait_for_confirmation") return "wait_for_1h_confirmation";
+  if (timing === "wait_for_pullback") return "watch_only";
+  if (timing === "enter_now_aggressive") return "entry_ready";
+  return timing || row?.status;
+};
 const listItems = value => Array.isArray(value) ? value.filter(Boolean) : value ? [value] : [];
 
 const URGENCY_BADGE = {
@@ -772,6 +817,40 @@ function formatLocalDateTime(value) {
   }
 }
 
+function parseQuoteTimestamp(value) {
+  if (value === null || value === undefined || value === "") return null;
+  try {
+    if (typeof value === "number") {
+      const epoch = Math.abs(value) >= 1_000_000_000_000 ? value : value * 1000;
+      const date = new Date(epoch);
+      return Number.isNaN(date.getTime()) ? null : date;
+    }
+    const raw = String(value).trim();
+    if (!raw) return null;
+    if (/^\d{10,13}$/.test(raw)) {
+      const numeric = Number(raw);
+      const epoch = raw.length >= 13 ? numeric : numeric * 1000;
+      const date = new Date(epoch);
+      return Number.isNaN(date.getTime()) ? null : date;
+    }
+    const hasTimezone = /(?:z|[+-]\d{2}:?\d{2})$/i.test(raw);
+    const date = new Date(hasTimezone ? raw : `${raw}Z`);
+    return Number.isNaN(date.getTime()) ? null : date;
+  } catch {
+    return null;
+  }
+}
+
+function formatQuoteTimeEt(value) {
+  const date = parseQuoteTimestamp(value);
+  if (!date) return "unavailable";
+  return `${date.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: "America/New_York",
+  })} ET`;
+}
+
 function MarketTable({ title, rows = [], showDollarVolume = false, message = "", unavailableMessage = "" }) {
   const emptyMessage = message || unavailableMessage || "No cached rows yet.";
   return (
@@ -837,6 +916,10 @@ function MarketTodayPage({ admin = false }) {
   const marketStatusMessage = market?.message === "Market Today data will update after the next scheduled fetch."
     ? pendingMarketMessage
     : market?.message;
+  const stockStaleTime = market?.stock_updated_at ? formatLocalDateTime(market.stock_updated_at) : "an earlier refresh";
+  const stockStaleWarning = market?.stock_data_stale
+    ? `Market movers are temporarily showing cached data from ${stockStaleTime}. News is updated separately.`
+    : "";
   const marketHeroReminders = [
     "Market overview only - not a buy/sell signal",
     "Swing trading context, not day-trading advice",
@@ -897,6 +980,14 @@ function MarketTodayPage({ admin = false }) {
         <div className="card" style={{ marginBottom: 14 }}>
           <div className="card-title">Market Snapshot</div>
           <div style={{ color: "var(--muted)", fontSize: 13 }}>Market breadth summary is unavailable on the current data plan.</div>
+        </div>
+      )}
+      {!loading && market?.available && stockStaleWarning && (
+        <div className="card" style={{ marginBottom: 14, borderColor: "rgba(251,176,36,0.35)", background: "rgba(251,176,36,0.08)" }}>
+          <div style={{ color: "var(--amber)", fontSize: 13, lineHeight: 1.5 }}>
+            {stockStaleWarning}
+            {market?.stock_stale_reason && <span style={{ color: "var(--muted)" }}> {market.stock_stale_reason}</span>}
+          </div>
         </div>
       )}
 
@@ -982,6 +1073,9 @@ function SingleTickerCheck({ guest = false }) {
   const formatMoney = value => value == null || value === "" ? "-" : `$${Number(value).toFixed(2)}`;
   const formatNumber = value => value == null || value === "" ? "-" : Number(value).toFixed(2);
   const suggestedZone = result?.suggested_entry_zone;
+  const quoteTimestamp = result?.selected_price_timestamp ?? result?.quote?.selected_price_timestamp;
+  const quoteTime = formatQuoteTimeEt(quoteTimestamp);
+  const priceStale = Boolean(result?.price_stale ?? result?.quote?.price_stale);
   const canShowSuggestedZone = Boolean(suggestedZone && (!guest || guestZoneAccepted));
   const acceptGuestZoneDisclaimer = () => {
     console.log("GUEST_DISCLAIMER_ACCEPTED");
@@ -1047,7 +1141,19 @@ function SingleTickerCheck({ guest = false }) {
                   <td>{formatMoney(result.target)}</td>
                   <td>{formatMoney(stop)}</td>
                   {!guest && <td>{result.risk_reward == null ? "-" : `1:${Number(result.risk_reward).toFixed(2)}`}</td>}
-                  {!guest && <td>{result.data_source || "-"}</td>}
+                  {!guest && (
+                    <td>
+                      <div>{result.data_source || "-"}</div>
+                      <div style={{ marginTop: 3, fontSize: 10, color: priceStale ? "var(--amber)" : "var(--muted)", lineHeight: 1.3 }}>
+                        Quote time: {quoteTime}
+                      </div>
+                      {priceStale && (
+                        <div className="badge" style={{ marginTop: 5, color: "var(--amber)", borderColor: "rgba(251,176,36,0.35)", background: "rgba(251,176,36,0.08)" }}>
+                          Price may be stale
+                        </div>
+                      )}
+                    </td>
+                  )}
                 </tr>
               </tbody>
             </table>
@@ -1137,7 +1243,14 @@ function GuestScreenerPage() {
   });
   const meta = board?.metadata || {};
   const scannedAt = meta.scanned_at ? new Date(meta.scanned_at).toLocaleString() : "Latest scheduled scan";
-  const scannedTickers = meta.universe_source === "cached_market_today_top_200" || !meta.tickers_scanned || Number(meta.tickers_scanned) < 200
+  const priceUpdatedAt = meta.last_price_updated_at ? new Date(meta.last_price_updated_at).toLocaleString() : "Not refreshed yet";
+  const analysisUpdatedAt = meta.analysis_updated_at ? new Date(meta.analysis_updated_at).toLocaleString() : scannedAt;
+  const universeLabel = meta.universe_source === "active_stocks_200"
+    ? "Active Stocks 200"
+    : meta.universe_source
+      ? String(meta.universe_source).replace(/_/g, " ")
+      : "Active Stocks 200";
+  const scannedTickers = meta.universe_source === "active_stocks_200" || meta.universe_source === "cached_market_today_top_200" || !meta.tickers_scanned || Number(meta.tickers_scanned) < 200
     ? 200
     : meta.tickers_scanned;
   const fallbackAi = "This ticker matched SwingAI's setup-quality rules during the latest scheduled scan. Review the chart and risk level before making any trading decision.";
@@ -1151,13 +1264,16 @@ function GuestScreenerPage() {
           <div>
             <div style={{ fontSize: 22, fontWeight: 800 }}>Good quality tickers today</div>
             <p style={{ color: "var(--text2)", fontSize: 13, lineHeight: 1.6, maxWidth: 760, margin: "8px 0 0" }}>
-              This list is updated after the 10:30 AM and 1:00 PM ET market scans. SwingAI scans today's cached top 200 market tickers and ranks the strongest setups from highest to lowest by AI analysis. List and ranking are based on the latest scan. Visible prices refresh when available during market hours.
+              This list is updated after the 10:30 AM and 1:00 PM ET market scans. SwingAI scans the fixed Active Stocks 200 universe and ranks the strongest setups from highest to lowest by AI analysis. List and ranking are based on the latest scan. Visible prices refresh when available during market hours.
             </p>
             <div style={{ marginTop: 8, fontSize: 12, color: "var(--muted)" }}>Indicators based mainly on Daily candles</div>
           </div>
           <div style={{ minWidth: 220, fontSize: 12, color: "var(--text2)", lineHeight: 1.8 }}>
             <div><b>Scanned:</b> {scannedAt}</div>
+            <div><b>Price updated:</b> {priceUpdatedAt}</div>
+            <div><b>Analysis updated:</b> {analysisUpdatedAt}</div>
             <div><b>Session:</b> {meta.scan_session || "Latest scheduled scan"}</div>
+            <div><b>Universe:</b> {universeLabel}</div>
             <div><b>Scanned tickers:</b> {scannedTickers}</div>
             <div><b>Rank rule:</b> Highest to lowest by AI analysis score</div>
             <div><b>Setups:</b> {(meta.setup_types || []).join(", ") || "n/a"}</div>
@@ -1174,7 +1290,7 @@ function GuestScreenerPage() {
             <table>
               <thead>
                 <tr>
-                  <th>Ticker</th><th>Setup</th><th>Score</th><th>Scan Price</th><th>Target</th><th>Stop</th><th>AI</th>
+                  <th>Ticker</th><th>Setup</th><th>Latest Analysis Score</th><th>Price</th><th>Target</th><th>Stop</th><th>AI</th>
                 </tr>
               </thead>
               <tbody>
@@ -1182,8 +1298,14 @@ function GuestScreenerPage() {
                   <tr key={r.ticker}>
                     <td style={{ fontFamily: "var(--mono)", fontWeight: 700 }}>{r.ticker}</td>
                     <td>{r.setup || "-"}</td>
-                    <td style={{ color: SCORE_COLOR(r.score || 0), fontWeight: 700 }}>{r.score ?? "-"}</td>
-                    <td>{r.scan_price ? `$${Number(r.scan_price).toFixed(2)}` : "-"}</td>
+                    <td style={{ color: SCORE_COLOR(r.score || 0), fontWeight: 700 }}>
+                      {r.score ?? "-"}
+                      {r.score_stale && <div style={{ color: "var(--muted)", fontSize: 10, fontWeight: 400 }}>price refreshed after analysis</div>}
+                    </td>
+                    <td>
+                      {r.current_price ? `$${Number(r.current_price).toFixed(2)}` : "-"}
+                      {r.last_price_updated_at && <div style={{ color: "var(--muted)", fontSize: 10 }}>Price {new Date(r.last_price_updated_at).toLocaleTimeString()}</div>}
+                    </td>
                     <td>{r.target ? `$${Number(r.target).toFixed(2)}` : "-"}</td>
                     <td>{r.stop ? `$${Number(r.stop).toFixed(2)}` : "-"}</td>
                     <td><button className="btn btn-blue" style={{ padding: "4px 8px", fontSize: 10 }} onClick={() => setOpenAi(openAi === r.ticker ? null : r.ticker)}>AI</button></td>
@@ -1365,6 +1487,8 @@ function ScreenerPage({ onScanComplete, readOnly = false }) {
       {filtered.length > 0 && (
         <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
           <span style={{ fontSize: 11, color: "var(--muted)" }}>Active Screener List · {filtered.length} results</span>
+          {board?.last_price_updated_at && <span className="tag" style={{ fontSize: 10 }}>Price updated {formatEtTime(board.last_price_updated_at)} ET</span>}
+          {(board?.analysis_updated_at || board?.scanned_at) && <span className="tag" style={{ fontSize: 10 }}>Analysis updated {formatEtTime(board.analysis_updated_at || board.scanned_at)} ET</span>}
           {setups.map(s => (
             <button key={s} onClick={() => setFilterSetup(s)} className="btn btn-ghost" style={{ padding: "3px 10px", fontSize: 10, ...(filterSetup === s ? { borderColor: "var(--green)", color: "var(--green)" } : {}) }}>{s}</button>
           ))}
@@ -1413,7 +1537,7 @@ function ScreenerPage({ onScanComplete, readOnly = false }) {
           <div className="table-wrap">
             <table>
               <thead>
-                <tr><th>Ticker</th><th>Price</th><th>Chg%</th><th>Score</th><th>Confidence</th><th>Setup</th><th>RSI</th><th>Vol</th><th>Target</th><th>Stop</th><th>Actions</th></tr>
+                <tr><th>Ticker</th><th>Price</th><th>Chg%</th><th>Latest Analysis Score</th><th>Confidence</th><th>Setup</th><th>RSI</th><th>Vol</th><th>Target</th><th>Stop</th><th>Actions</th></tr>
               </thead>
               <tbody>
                 {filtered.map((r, i) => {
@@ -1421,9 +1545,19 @@ function ScreenerPage({ onScanComplete, readOnly = false }) {
                   return (
                   <tr key={i}>
                     <td style={{ fontWeight: 700, fontSize: 13 }}>{r.ticker}</td>
-                    <td>{displayPrice == null || displayPrice === "" ? "-" : `$${typeof displayPrice === "number" ? displayPrice.toFixed(2) : displayPrice}`}</td>
+                    <td>
+                      {displayPrice == null || displayPrice === "" ? "-" : `$${typeof displayPrice === "number" ? displayPrice.toFixed(2) : displayPrice}`}
+                      <div style={{ marginTop: 3, fontSize: 10, color: r.price_stale ? "var(--amber)" : "var(--muted)", lineHeight: 1.3 }}>
+                        {r.price_stale ? "stale price" : (r.last_price_updated_at ? `Price ${formatEtTime(r.last_price_updated_at)} ET` : "scan price")}
+                      </div>
+                    </td>
                     <td><span style={{ color: (r.change_pct || 0) >= 0 ? "var(--green)" : "var(--red)" }}>{(r.change_pct || 0) >= 0 ? "+" : ""}{(r.change_pct || 0).toFixed(2)}%</span></td>
-                    <td><ScoreGauge score={r.score} /></td>
+                    <td>
+                      <ScoreGauge score={r.score} />
+                      <div style={{ marginTop: 3, fontSize: 10, color: "var(--muted)", lineHeight: 1.3 }}>
+                        Analysis {formatEtTime(r.analysis_updated_at || r.rescored_at || r.scanned_at)} ET
+                      </div>
+                    </td>
                     <td>
                       <span style={{ color: SCORE_COLOR(r.score), fontWeight: 700 }}>{formatConfidence(r)}</span>
                       <div style={{ marginTop: 3, fontSize: 10, color: "var(--muted)", lineHeight: 1.3 }}>Estimated</div>
@@ -1557,7 +1691,7 @@ const ENTRY_ACTION_LABELS = {
   watch: "Watch",
   wait_for_pullback: "Wait for pullback",
   wait_for_1h_confirmation: "Wait for 1H confirmation",
-  consider_entry: "Entry trigger confirmed. Review before buying.",
+  consider_entry: "Buy Watch",
   avoid: "Avoid",
   cancelled: "Cancelled",
 };
@@ -1599,7 +1733,7 @@ const buildEntryWatchPayload = analysisInput => {
     ideal_stop: numberOrNull(zone.ideal_stop ?? analysis.stop),
     target: numberOrNull(zone.target ?? analysis.target),
     risk_reward: numberOrNull(zone.risk_reward_conservative ?? analysis.risk_reward),
-    entry_timing: zone.entry_timing || analysis.entry_timing || "wait_for_confirmation",
+    entry_timing: normalizedWatchEntryTiming({ entry_timing: zone.entry_timing || analysis.entry_timing || "wait_for_1h_confirmation" }),
   };
 };
 
@@ -1693,7 +1827,9 @@ function DecisionLayerSections({ analysis, compact = false }) {
             ["Daily Context", summary.daily_context || "-"],
             ["4H Setup", summary.four_hour_setup || "-"],
             ["1H Entry", summary.one_hour_entry || "-"],
-            ["Trade Readiness", compactStatus(summary.trade_readiness)],
+            ["Quality Grade", summary.quality_grade || analysis.quality_grade || "-"],
+            ["Timing", summary.timing || timingLabel(summary.trade_readiness)],
+            ["Action", summary.action || actionLabel(entrySignal?.action)],
             ["Expected Hold", summary.expected_holding_period || "-"],
           ]} />
         </div>
@@ -1702,8 +1838,8 @@ function DecisionLayerSections({ analysis, compact = false }) {
         <div style={sectionStyle}>
           <div style={{ fontWeight: 800, marginBottom: 8 }}>Entry Signal</div>
           <DetailGrid items={[
-            ["Status", compactStatus(entrySignal.status)],
-            ["Action", compactStatus(entrySignal.action)],
+            ["Status", timingLabel(entrySignal.status)],
+            ["Action", actionLabel(entrySignal.action)],
             ["Timeframe", entrySignal.timeframe_used || "-"],
             ["Valid For", entrySignal.signal_valid_for || "-"],
             ["Expected Hold", entrySignal.expected_holding_period || "-"],
@@ -1746,16 +1882,16 @@ function SuggestedEntryZone({ zone, description = "Research-only entry zone from
   if (!zone) return null;
   const avoid = zone.entry_grade === "Avoid";
   const gradeColor = zone.entry_grade === "A" ? "var(--green)" : zone.entry_grade === "B" ? "var(--green2)" : zone.entry_grade === "C" ? "var(--amber)" : "var(--red)";
-  const timingLabels = {
-    enter_now_aggressive: "Aggressive zone candidate",
-    wait_for_pullback: "Wait for pullback",
-    wait_for_confirmation: "Wait for confirmation",
-    avoid: "Avoid",
-  };
-  const timingLabel = timingLabels[zone.entry_timing] || "—";
-  const timingCaution = zone.entry_timing === "wait_for_pullback" || zone.entry_timing === "wait_for_confirmation";
-  const timingColor = zone.entry_timing === "enter_now_aggressive" ? "var(--green)" : timingCaution ? "var(--amber)" : "var(--red)";
+  const timingValue = normalizedWatchEntryTiming({ entry_timing: zone.entry_timing });
+  const timingText = timingValue ? timingLabel(timingValue) : "—";
+  const timingCaution = timingValue === "watch_only" || timingValue === "wait_for_1h_confirmation";
+  const timingColor = timingValue === "entry_ready" ? "var(--green)" : timingCaution ? "var(--amber)" : "var(--red)";
   const entryNotConfirmed = entrySignal && entrySignal.status !== "confirmed";
+  const zoneStatus = zone.price_zone_status || entrySignal?.price_zone_status;
+  const confirmationPassed = Boolean(zone.confirmation_passed || entrySignal?.confirmation_passed);
+  const blockReason = zone.entry_block_reason || entrySignal?.entry_block_reason;
+  const signalStatus = zone.entry_signal_status || entrySignal?.status;
+  const signalAction = zone.entry_signal_action || entrySignal?.action;
   const detailValue = (value, highlight = false, muted = false) => (
     <span style={{
       color: highlight ? "var(--green)" : muted ? "var(--muted)" : "var(--text)",
@@ -1805,7 +1941,7 @@ function SuggestedEntryZone({ zone, description = "Research-only entry zone from
               Grade {zone.entry_grade || "—"}
             </span>
             <span className="badge" style={{ color: timingColor, borderColor: timingColor, background: "rgba(255,255,255,0.035)", fontSize: 12, minHeight: 26, padding: "3px 11px" }}>
-              {timingLabel}
+              {timingText}
             </span>
             <span className="badge" style={{ color: "var(--blue)", borderColor: "rgba(77,166,255,0.45)", background: "rgba(77,166,255,0.08)", fontSize: 12, minHeight: 26, padding: "3px 11px" }}>
               Confidence {zone.confidence || "—"}
@@ -1813,8 +1949,13 @@ function SuggestedEntryZone({ zone, description = "Research-only entry zone from
           </div>
           <DetailGrid items={[
             ["Entry Grade", detailValue(zone.entry_grade || "—")],
-            ["Entry Timing", detailValue(timingLabel)],
+            ["Entry Timing", detailValue(timingText)],
             ["Trade Readiness", detailValue(compactStatus(zone.trade_readiness))],
+            ["Price Zone", detailValue(priceZoneLabel(zoneStatus))],
+            ["Distance to Entry", detailValue(zone.distance_to_entry_pct != null ? `${Number(zone.distance_to_entry_pct).toFixed(2)}%` : "-")],
+            ["Confirmation", detailValue(confirmationLabel(confirmationPassed))],
+            ["Signal Status", detailValue(compactStatus(signalStatus))],
+            ["Signal Action", detailValue(actionLabel(signalAction))],
             ["Confidence", detailValue(zone.confidence || "—")],
             ["Aggressive Entry", detailValue(fmtMoneyDash(zone.aggressive_entry), false, timingCaution)],
             ["Conservative Entry", fmtMoneyDash(zone.conservative_entry)],
@@ -1826,14 +1967,15 @@ function SuggestedEntryZone({ zone, description = "Research-only entry zone from
           ]} />
           {timingCaution && (
             <div style={{ marginTop: 10, padding: "9px 11px", borderRadius: 6, background: "rgba(251,176,36,0.08)", border: "1px solid rgba(251,176,36,0.22)", color: "var(--amber)", fontSize: 12, lineHeight: 1.5 }}>
-              Aggressive entry has higher timing risk. Preferred entry is the conservative zone or a stronger confirmation trigger.
+              {zone.aggressive_entry_note || "Aggressive entry has higher timing risk. Preferred entry is the conservative zone or a stronger confirmation trigger."}
             </div>
           )}
           {entryNotConfirmed && (
             <div style={{ marginTop: 10, padding: "9px 11px", borderRadius: 6, background: "rgba(251,176,36,0.08)", border: "1px solid rgba(251,176,36,0.22)", color: "var(--amber)", fontSize: 12, lineHeight: 1.5 }}>
-              Entry zone exists, but entry signal is not confirmed yet.
+              {blockReason || "Entry zone exists, but entry signal is not confirmed yet."}
             </div>
           )}
+          {textBlock("Block Reason", blockReason, "amber")}
           {zone.grade_adjustment_reason && (
             <div style={{ marginTop: 10, padding: "9px 11px", borderRadius: 6, background: "rgba(77,166,255,0.07)", border: "1px solid rgba(77,166,255,0.18)", color: "var(--text2)", fontSize: 12, lineHeight: 1.5 }}>
               {zone.grade_adjustment_reason}
@@ -2049,6 +2191,10 @@ function PortfolioPage({ positions, onRefresh }) {
     setLiveAnalysis(prev => ({ ...prev, [key]: data }));
   };
 
+  const singleScanQuoteTimestamp = singleScan?.selected_price_timestamp ?? singleScan?.quote?.selected_price_timestamp;
+  const singleScanQuoteTime = formatQuoteTimeEt(singleScanQuoteTimestamp);
+  const singleScanPriceStale = Boolean(singleScan?.price_stale ?? singleScan?.quote?.price_stale);
+
   return (
     <div className="fade-up">
       <div className="grid-4" style={{ marginBottom: 14 }}>
@@ -2105,6 +2251,15 @@ function PortfolioPage({ positions, onRefresh }) {
                 {singleScan.stop != null && ` | Stop: $${Number(singleScan.stop).toFixed(2)}`}
               </div>
             )}
+            <div style={{ marginTop: 6, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", fontSize: 11, color: "var(--muted)" }}>
+              <span>Source: {singleScan.data_source || "-"}</span>
+              <span>Quote time: {singleScanQuoteTime}</span>
+              {singleScanPriceStale && (
+                <span className="badge" style={{ color: "var(--amber)", borderColor: "rgba(251,176,36,0.35)", background: "rgba(251,176,36,0.08)" }}>
+                  Price may be stale
+                </span>
+              )}
+            </div>
             {singleScan.signals?.length > 0 && (
               <div className="signals-list" style={{ marginTop: 10 }}>
                 {singleScan.signals.slice(0, 5).map((s, i) => <span key={i} className="signal-pill">{s}</span>)}
@@ -2113,6 +2268,21 @@ function PortfolioPage({ positions, onRefresh }) {
             {confidenceValue(singleScan) != null && (
               <div style={{ marginTop: 8, fontSize: 11, color: "var(--muted)" }}>Estimated confidence, not historical win rate.</div>
             )}
+            <div style={{ marginTop: 10, padding: "10px 12px", borderRadius: 6, background: "rgba(255,255,255,0.035)", border: "1px solid var(--border2)" }}>
+              <DetailGrid items={[
+                ["Price Zone", priceZoneLabel(singleScan.price_zone_status || singleScan.entry_signal?.price_zone_status)],
+                ["Confirmation", confirmationLabel(singleScan.confirmation_passed || singleScan.entry_signal?.confirmation_passed)],
+                ["Signal Status", compactStatus(singleScan.entry_signal_status || singleScan.entry_signal?.status)],
+                ["Signal Action", actionLabel(singleScan.entry_signal_action || singleScan.entry_signal?.action)],
+                ["Buy Alert", (singleScan.entry_timing === "entry_ready" && (singleScan.confirmation_passed || singleScan.entry_signal?.confirmation_passed)) ? "Yes" : "No"],
+                ["Block Reason", singleScan.entry_block_reason || singleScan.entry_signal?.entry_block_reason || "-"],
+              ]} />
+              {(singleScan.price_in_entry_zone || singleScan.entry_signal?.price_in_entry_zone) && !(singleScan.confirmation_passed || singleScan.entry_signal?.confirmation_passed) && (
+                <div style={{ marginTop: 8, color: "var(--amber)", fontSize: 12, lineHeight: 1.5 }}>
+                  Price is in the suggested entry zone, but Buy signal is not confirmed yet. Waiting for 1H confirmation.
+                </div>
+              )}
+            </div>
             <SuggestedEntryZone zone={singleScan.suggested_entry_zone} entrySignal={singleScan.entry_signal} />
             <DecisionLayerSections analysis={singleScan} />
           </div>
@@ -2526,24 +2696,47 @@ function ConditionList({ items }) {
 function EntryWatchlistPage() {
   const [watches, setWatches] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState(null);
+  const [clockTick, setClockTick] = useState(0);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [busyId, setBusyId] = useState("");
   const [checking, setChecking] = useState(false);
+  const refreshInFlightRef = useRef(false);
 
-  const loadWatches = useCallback(async () => {
+  const loadWatches = useCallback(async (opts = {}) => {
+    if (refreshInFlightRef.current) return;
+    const auto = Boolean(opts.auto);
+    refreshInFlightRef.current = true;
+    setRefreshing(true);
     setError("");
     const { data, error } = await api("/api/entry-watchlist");
+    refreshInFlightRef.current = false;
+    setRefreshing(false);
     if (error) {
       setError(error);
-      setWatches([]);
+      if (!auto) setWatches([]);
     } else {
-      setWatches(Array.isArray(data?.watches) ? data.watches : []);
+      const nextWatches = Array.isArray(data?.watches) ? data.watches : [];
+      setWatches(nextWatches);
+      setLastUpdatedAt(new Date());
+      if (auto) console.log(`ENTRY_WATCHLIST_AUTO_REFRESH_SUCCESS count=${nextWatches.length}`);
     }
     setLoading(false);
   }, []);
 
-  useEffect(() => { loadWatches(); }, [loadWatches]);
+  useEffect(() => {
+    console.log("ENTRY_WATCHLIST_AUTO_REFRESH_START");
+    loadWatches({ auto: true });
+    const refreshTimer = window.setInterval(() => loadWatches({ auto: true }), 60000);
+    const clockTimer = window.setInterval(() => setClockTick(t => t + 1), 15000);
+    return () => {
+      window.clearInterval(refreshTimer);
+      window.clearInterval(clockTimer);
+      console.log("ENTRY_WATCHLIST_AUTO_REFRESH_STOP");
+    };
+  }, [loadWatches]);
 
   const cancelWatch = async watch => {
     if (!watch?.id || busyId) return;
@@ -2557,7 +2750,7 @@ function EntryWatchlistPage() {
       return;
     }
     setMessage(`${watch.ticker} watch cancelled.`);
-    await loadWatches();
+    await loadWatches({ manual: true });
   };
 
   const checkWatches = async () => {
@@ -2571,19 +2764,30 @@ function EntryWatchlistPage() {
       setError(error);
       return;
     }
+    if (Array.isArray(data?.watches)) setWatches(data.watches);
     setMessage(`Checked ${data?.checked ?? 0} entry watch${data?.checked === 1 ? "" : "es"}.`);
-    await loadWatches();
+    await loadWatches({ manual: true });
   };
+
+  const lastUpdatedLabel = lastUpdatedAt
+    ? `${Math.max(0, Math.round((Date.now() - lastUpdatedAt.getTime()) / 1000))} seconds ago`
+    : "not yet";
+  void clockTick;
 
   return (
     <div className="fade-up">
       <div className="section-header">
         <div>
           <div className="section-title">Entry Signal Watchlist</div>
-          <div className="section-sub">Pre-buy monitoring only. Move ideas to Portfolio after buying.</div>
+          <div className="section-sub">This watchlist is monitored automatically. Manual Check is optional.</div>
+          <div style={{ marginTop: 6, fontSize: 11, color: refreshing ? "var(--blue)" : "var(--muted)" }}>
+            {refreshing ? "Auto-refreshing..." : `Last updated: ${lastUpdatedLabel}`}
+          </div>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <button className="btn btn-ghost" onClick={loadWatches} disabled={loading}>Refresh</button>
+          <button className="btn btn-ghost" onClick={() => loadWatches({ manual: true })} disabled={loading || refreshing}>
+            {refreshing ? "Refreshing..." : "Refresh"}
+          </button>
           <button className="btn btn-blue" onClick={checkWatches} disabled={checking}>{checking ? "Checking..." : "Manual Check"}</button>
         </div>
       </div>
@@ -2601,34 +2805,74 @@ function EntryWatchlistPage() {
       ) : (
         <div className="card" style={{ padding: 0 }}>
           <div className="table-wrap">
-            <table style={{ minWidth: 1420 }}>
+            <table style={{ minWidth: 1950 }}>
               <thead>
                 <tr>
-                  <th>Ticker</th><th>Status</th><th>Setup</th><th>Score</th><th>Current</th><th>Preferred Entry</th><th>Target</th><th>Stop</th><th>Entry Timing</th><th>Signal Status</th><th>Signal Action</th><th>Trigger Conditions</th><th>Missing Conditions</th><th>Invalidation</th><th>Reason</th><th>Last Checked</th><th>Expires</th><th>Actions</th>
+                  <th>Ticker</th><th>Status</th><th>Setup</th><th>Score</th><th>Live Current Price</th><th>Saved Preferred Entry / Watch Price</th><th>Saved Aggressive Entry</th><th>Saved Conservative Entry</th><th>Saved Target</th><th>Saved Stop</th><th>Source</th><th>Quote Time</th><th>Price in Entry Zone</th><th>Distance to Entry</th><th>Confirmation</th><th>Block Reason</th><th>Entry Timing</th><th>Signal Status</th><th>Signal Action</th><th>Trigger Conditions</th><th>Missing Conditions</th><th>Invalidation</th><th>Reason</th><th>Last Checked</th><th>Auto Monitor</th><th>Expires</th><th>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {watches.map(w => {
                   const status = w.status || "waiting_for_1h_confirmation";
                   const confirmed = status === "entry_confirmed" || w.entry_signal_status === "confirmed";
+                  const quoteTime = formatQuoteTimeEt(w.selected_price_timestamp);
                   return (
                     <tr key={w.id || `${w.ticker}-${w.created_at}`}>
                       <td style={{ fontWeight: 800, fontSize: 13 }}>{String(w.ticker || "").toUpperCase()}</td>
                       <td><span className="badge" style={entryStatusStyle(status)}>{ENTRY_STATUS_LABELS[status] || status || "-"}</span></td>
                       <td>{w.setup || "-"}</td>
                       <td>{w.score ?? w.confidence ?? "-"}</td>
-                      <td>{fmtMoney(w.current_price ?? w.watch_price)}</td>
-                      <td style={{ color: "var(--green)" }}>{fmtMoney(w.preferred_entry ?? w.conservative_entry)}</td>
+                      <td>
+                        {fmtMoney(w.current_price)}
+                        <div style={{ marginTop: 3, fontSize: 10, color: w.price_stale ? "var(--amber)" : "var(--muted)", lineHeight: 1.3 }}>
+                          {w.price_source || "saved price"}{w.price_stale ? " · stale" : ""}
+                        </div>
+                        {w.stale_reason && <div style={{ marginTop: 2, fontSize: 10, color: "var(--amber)", lineHeight: 1.3 }}>{w.stale_reason}</div>}
+                        {w.price_stale && (
+                          <div className="badge" style={{ marginTop: 5, color: "var(--amber)", borderColor: "rgba(251,176,36,0.35)", background: "rgba(251,176,36,0.08)" }}>
+                            Price may be stale
+                          </div>
+                        )}
+                      </td>
+                      <td style={{ color: "var(--green)" }}>
+                        {fmtMoney(w.preferred_entry ?? w.conservative_entry)}
+                        <div style={{ marginTop: 3, fontSize: 10, color: "var(--muted)", lineHeight: 1.3 }}>
+                          Frozen plan · Watch Price: {fmtMoney(w.watch_price)}
+                        </div>
+                      </td>
+                      <td>{fmtMoney(w.aggressive_entry)}</td>
+                      <td>{fmtMoney(w.conservative_entry)}</td>
                       <td>{fmtMoney(w.target)}</td>
                       <td style={{ color: "var(--red)" }}>{fmtMoney(w.ideal_stop)}</td>
-                      <td>{w.entry_timing || "-"}</td>
+                      <td>
+                        <div>{w.price_source || "-"}</div>
+                        {w.selected_price_source && (
+                          <div style={{ marginTop: 3, fontSize: 10, color: "var(--muted)", lineHeight: 1.3 }}>{w.selected_price_source}</div>
+                        )}
+                      </td>
+                      <td>{quoteTime}</td>
+                      <td>
+                        <span className="badge" style={{ color: w.price_in_entry_zone ? "var(--green)" : "var(--amber)", borderColor: w.price_in_entry_zone ? "rgba(34,197,94,0.35)" : "rgba(251,176,36,0.35)", background: w.price_in_entry_zone ? "rgba(34,197,94,0.08)" : "rgba(251,176,36,0.08)" }}>
+                          {w.price_in_entry_zone ? "Yes" : "No"}
+                        </span>
+                      </td>
+                      <td>{w.distance_to_entry_pct != null ? `${Number(w.distance_to_entry_pct).toFixed(2)}%` : "-"}</td>
+                      <td>{confirmationLabel(w.entry_signal_status === "confirmed" || w.entry_confirmation_summary?.confirmation_passed)}</td>
+                      <td style={{ whiteSpace: "normal", minWidth: 220, lineHeight: 1.45 }}>{w.entry_block_reason || "-"}</td>
+                      <td>{timingLabel(normalizedWatchEntryTiming(w))}</td>
                       <td>{w.entry_signal_status || "-"}</td>
-                      <td style={{ color: confirmed ? "var(--green)" : "var(--text2)" }}>{ENTRY_ACTION_LABELS[w.entry_signal_action] || w.entry_signal_action || "-"}</td>
+                      <td style={{ color: confirmed ? "var(--green)" : "var(--text2)" }}>{actionLabel(w.entry_signal_action) || ENTRY_ACTION_LABELS[w.entry_signal_action] || w.entry_signal_action || "-"}</td>
                       <td><ConditionList items={w.trigger_conditions} /></td>
                       <td><ConditionList items={w.missing_conditions} /></td>
                       <td><ConditionList items={w.invalidation_conditions} /></td>
                       <td style={{ whiteSpace: "normal", minWidth: 220, lineHeight: 1.45 }}>{w.entry_signal_reason || "-"}</td>
-                      <td>{fmtDateTime(w.updated_at)}</td>
+                      <td>{fmtDateTime(w.last_checked_at || w.updated_at)}</td>
+                      <td>
+                        <span className="badge" style={{ color: "var(--green)", borderColor: "rgba(34,197,94,0.35)", background: "rgba(34,197,94,0.08)" }}>Active</span>
+                        <div style={{ marginTop: 4, fontSize: 10, color: "var(--muted)", lineHeight: 1.3 }}>
+                          Plan: {String(w.plan_mode || "frozen").replace(/_/g, " ")}
+                        </div>
+                      </td>
                       <td>{fmtDateTime(w.expires_at)}</td>
                       <td>
                         <button className="btn btn-red" style={{ padding: "4px 8px", fontSize: 10 }} onClick={() => cancelWatch(w)} disabled={busyId === w.id || ["cancelled", "expired", "invalidated"].includes(status)}>
