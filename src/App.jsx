@@ -718,11 +718,11 @@ function PositionBar({ entry, current, target, stop }) {
 }
 
 function PriceReliabilityBadge({ position }) {
-  if (!position?.fallback_to_entry) return null;
+  if (!position?.fallback_to_entry && !position?.quote_is_stale && position?.data_freshness !== "stale") return null;
   return (
     <span
       className="badge"
-      title={`Price source: ${position.price_source || "unknown"}`}
+      title={`Price source: ${position.quote_source || position.price_source || "unknown"}${position.quote_updated_at ? ` | Updated: ${formatQuoteTimeEt(position.quote_updated_at)}` : ""}`}
       style={{
         background: "rgba(251, 176, 36, .12)",
         color: "var(--amber)",
@@ -731,7 +731,7 @@ function PriceReliabilityBadge({ position }) {
         marginTop: 3,
       }}
     >
-      entry fallback
+      data stale
     </span>
   );
 }
@@ -779,9 +779,28 @@ function LeadershipBadge({ analysis }) {
   );
 }
 
+function sectorMappingMissing(analysis) {
+  const label = String(analysis?.sector_strength_label || "").trim();
+  const sector = String(analysis?.sector_name || "").trim();
+  const score = analysis?.sector_strength_score;
+  const status = analysis?.sector_mapping_status || analysis?.leadership_metadata_json?.sector_mapping_status || analysis?.details_json?.sector_mapping_status;
+  return (
+    status === "missing" ||
+    label === "Mapping Missing" ||
+    (sector.toLowerCase() === "unknown" && label === "Neutral" && Number(score) === 45)
+  );
+}
+
 function SectorStrengthBadge({ analysis }) {
   const label = analysis?.sector_strength_label;
   if (!label && !analysis?.sector_name) return null;
+  if (sectorMappingMissing(analysis)) {
+    return (
+      <span className="badge" title="Ticker sector mapping is missing." style={sectorStrengthStyle("Mapping Missing")}>
+        Sector mapping missing
+      </span>
+    );
+  }
   const score = analysis?.sector_strength_score;
   const sector = analysis?.sector_name || analysis?.sector_etf || "Sector";
   return (
@@ -2432,6 +2451,7 @@ function StructurePlanV2Preview({ plan, compact = false }) {
 function ExitManagerV2Preview({ preview, compact = false }) {
   if (!preview) return null;
   const warnings = preview.exit_warnings || [];
+  const stale = preview.quote_is_stale || preview.price_stale || preview.data_freshness === "stale";
   return (
     <div style={{ marginTop: compact ? 0 : 12, padding: 12, borderRadius: 8, background: "rgba(77,166,255,0.045)", border: "1px solid rgba(77,166,255,0.18)" }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", flexWrap: "wrap", marginBottom: 10 }}>
@@ -2444,8 +2464,21 @@ function ExitManagerV2Preview({ preview, compact = false }) {
           <span className="badge" style={exitUrgencyStyle(preview.exit_urgency)}>{preview.exit_urgency || "Low"}</span>
         </div>
       </div>
+      {stale && (
+        <div style={{ marginBottom: 10, padding: "8px 10px", borderRadius: 6, border: "1px solid rgba(251,176,36,0.35)", background: "rgba(251,176,36,0.08)", color: "var(--amber)", fontSize: 12, lineHeight: 1.45 }}>
+          Data Stale - confirm price before treating this as a sell warning.
+        </div>
+      )}
       <div style={{ color: "var(--text2)", fontSize: 12, lineHeight: 1.5, marginBottom: 10 }}>{preview.exit_reason || "No preview reason available."}</div>
       <DetailGrid items={[
+        ["Current Price", fmtMoneyDash(preview.current_price)],
+        ["Quote Source", preview.quote_source || preview.price_source || "-"],
+        ["Quote Updated", preview.quote_updated_at ? formatQuoteTimeEt(preview.quote_updated_at) : "-"],
+        ["Freshness", preview.data_freshness || "-"],
+        ["Market Session", preview.market_session || "-"],
+        ["Stop Check Basis", preview.stop_check_basis || "-"],
+        ["Last Closed Candle", preview.last_closed_candle_time || "-"],
+        ["Warning Validity", preview.warning_validity_status || "-"],
         ["Current R", fmtRMultiple(preview.current_r_multiple)],
         ["Unrealized Gain", fmtPctDash(preview.unrealized_gain_pct)],
         ["Distance to Stop", fmtPctDash(preview.distance_to_stop_pct)],
@@ -2904,6 +2937,12 @@ function PortfolioPage({ positions, onRefresh }) {
                         <td>
                           <div>${typeof p.current_price === "number" ? p.current_price.toFixed(2) : "–"}</div>
                           <PriceReliabilityBadge position={p} />
+                          <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 3, lineHeight: 1.35 }}>
+                            {(p.quote_source || p.price_source || "source -")} · {p.quote_updated_at ? formatQuoteTimeEt(p.quote_updated_at) : "time -"}
+                          </div>
+                          <div style={{ fontSize: 10, color: p.quote_is_stale || p.data_freshness === "stale" ? "var(--amber)" : "var(--muted)", marginTop: 2, lineHeight: 1.35 }}>
+                            {p.data_freshness || "freshness -"} · {p.market_session || "session -"}
+                          </div>
                           <div style={{ fontSize: 10, color: PNL_COLOR(p.change_pct || 0) }}>{(p.change_pct || 0) >= 0 ? "+" : ""}{(p.change_pct || 0).toFixed(2)}%</div>
                         </td>
                         <td>
@@ -2924,8 +2963,14 @@ function PortfolioPage({ positions, onRefresh }) {
                           {p.risk_reward_label || (p.risk_reward != null ? `1:${Number(p.risk_reward).toFixed(1)}` : "-")}
                         </td>
                         <td><span className="badge" style={{ background: badge.bg, color: badge.text, borderColor: badge.border }}>{badge.label}</span></td>
-                        <td style={{ maxWidth: 160, fontSize: 10, color: "var(--text2)", lineHeight: 1.5 }}>
-                          {(p.sell_reasons || []).slice(0, 2).join(" · ")}
+                        <td style={{ maxWidth: 180, fontSize: 10, color: "var(--text2)", lineHeight: 1.5 }}>
+                          <div>{(p.sell_reasons || []).slice(0, 2).join(" · ")}</div>
+                          <div style={{ color: p.warning_validity_status?.startsWith("Data Stale") ? "var(--amber)" : "var(--muted)", marginTop: 4 }}>
+                            {p.warning_validity_status || "-"}
+                          </div>
+                          <div style={{ color: "var(--muted)", marginTop: 2 }}>
+                            Stop: {p.stop_check_basis || "-"} · Candle: {p.last_closed_candle_time || "-"}
+                          </div>
                         </td>
                         <td>
                           <div style={{ display: "flex", gap: 4 }}>
@@ -3667,7 +3712,7 @@ function LeadershipBoardPage() {
                     <td><span className="badge" style={leadershipStyle(r.leadership_rank_label)}>{r.leadership_rank_label || "-"}</span></td>
                     <td>{r.leadership_ranking_score == null ? "-" : Number(r.leadership_ranking_score).toFixed(0)}</td>
                     <td>{r.leadership_trend || "-"}</td>
-                    <td>{r.sector_name || "-"}</td>
+                    <td>{sectorMappingMissing(r) ? "Sector mapping missing" : (r.sector_name || "-")}</td>
                     <td><SectorStrengthBadge analysis={r} /></td>
                     <td>{fmtPctSigned(r.rs_1m_vs_spy)}</td>
                     <td>{fmtPctSigned(r.rs_3m_vs_spy)}</td>
