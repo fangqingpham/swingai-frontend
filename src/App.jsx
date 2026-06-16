@@ -2032,6 +2032,23 @@ function ScreenerPage({ onScanComplete, readOnly = false }) {
 }
 
 // ─── Portfolio ────────────────────────────────────────────────────────────────
+const STRATEGY_LABELS = {
+  swing_3_10d: "Swing Trade - 3 to 10 Days",
+  quick_momentum_1_3d: "Quick Momentum - 1 to 3 Days",
+};
+const strategyLabel = mode => STRATEGY_LABELS[mode] || STRATEGY_LABELS.swing_3_10d;
+function StrategyModeSelect({ value, onChange, label = "Strategy Mode" }) {
+  return (
+    <div>
+      <label>{label}</label>
+      <select className="input" value={value || "swing_3_10d"} onChange={e => onChange(e.target.value)} style={{ minWidth: 220 }}>
+        <option value="swing_3_10d">Swing Trade - 3 to 10 Days</option>
+        <option value="quick_momentum_1_3d">Quick Momentum - 1 to 3 Days</option>
+      </select>
+    </div>
+  );
+}
+
 const portfolioKey = p => String(p?.id || p?.ticker || "");
 const portfolioSymbol = p => String(p?.ticker || p?.symbol || "").toUpperCase();
 const fmtMoney = value => value == null || value === "" || Number.isNaN(Number(value)) ? "-" : `$${Number(value).toFixed(2)}`;
@@ -2128,13 +2145,17 @@ const normalizeAnalysisForEntryWatch = source => {
     stop: source.stop ?? source.stop_loss,
   };
 };
-const buildEntryWatchPayload = analysisInput => {
+const buildEntryWatchPayload = (analysisInput, strategyMode = null) => {
   const analysis = normalizeAnalysisForEntryWatch(analysisInput);
+  const selectedMode = strategyMode || analysis.strategy_mode || "swing_3_10d";
+  const quick = analysis.quick_momentum || {};
+  const final = quick.final_action_card || analysis.final_action_card || {};
   const zone = analysis.suggested_entry_zone || {};
   const ticker = String(analysis.ticker || "").trim().toUpperCase();
   return {
     ticker,
     analysis,
+    strategy_mode: selectedMode,
     setup: analysis.setup || "",
     score: analysis.score == null ? null : Math.round(Number(analysis.score)),
     confidence: zone.confidence || analysis.confidence || "",
@@ -2144,6 +2165,15 @@ const buildEntryWatchPayload = analysisInput => {
     preferred_entry: numberOrNull(zone.preferred_entry),
     ideal_stop: numberOrNull(zone.ideal_stop ?? analysis.stop),
     target: numberOrNull(zone.target ?? analysis.target),
+    trigger_price: numberOrNull(quick.trigger_price ?? final.trigger_price),
+    pullback_zone_low: numberOrNull(quick.pullback_zone_low),
+    pullback_zone_high: numberOrNull(quick.pullback_zone_high),
+    target_1: numberOrNull(quick.target_1 ?? final.target_1 ?? zone.target ?? analysis.target),
+    target_2: numberOrNull(quick.target_2 ?? final.target_2),
+    stretch_target: numberOrNull(quick.stretch_target ?? final.stretch_target),
+    time_stop_days: selectedMode === "quick_momentum_1_3d" ? 3 : null,
+    alert_stage: quick.alert_stage || final.final_action || null,
+    original_watch_reason: final.main_reason || zone.entry_reason || "",
     risk_reward: numberOrNull(zone.risk_reward_conservative ?? analysis.risk_reward),
     entry_timing: normalizedWatchEntryTiming({ entry_timing: zone.entry_timing || analysis.entry_timing || "wait_for_1h_confirmation" }),
   };
@@ -2152,7 +2182,8 @@ const buildEntryWatchPayload = analysisInput => {
 function EntryWatchButton({ analysis, onSaved, compact = false, disabled = false }) {
   const [state, setState] = useState("idle");
   const [message, setMessage] = useState("");
-  const payload = buildEntryWatchPayload(analysis);
+  const [strategyMode, setStrategyMode] = useState(analysis?.strategy_mode || "swing_3_10d");
+  const payload = buildEntryWatchPayload(analysis, strategyMode);
   const canSave = Boolean(payload.ticker);
 
   const save = async () => {
@@ -2179,6 +2210,7 @@ function EntryWatchButton({ analysis, onSaved, compact = false, disabled = false
 
   return (
     <div style={{ display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+      {!compact && <StrategyModeSelect value={strategyMode} onChange={setStrategyMode} label="Watch Mode" />}
       <button className="btn btn-green" style={compact ? { padding: "4px 8px", fontSize: 10, minHeight: 26 } : undefined} onClick={save} disabled={disabled || !canSave || state === "saving"}>
         {state === "saving" ? "Saving..." : state === "saved" ? "Watching" : "Watch Entry Signal"}
       </button>
@@ -2198,6 +2230,60 @@ function DetailGrid({ items }) {
           <div style={{ marginTop: 4, fontFamily: "var(--mono)", color: "var(--text)" }}>{value}</div>
         </div>
       ))}
+    </div>
+  );
+}
+
+function QuickMomentumPanel({ analysis }) {
+  const quick = analysis?.quick_momentum;
+  if (!quick) return null;
+  const final = quick.final_action_card || analysis.final_action_card || {};
+  const market = quick.market_condition || analysis.market_condition || {};
+  const data = quick.data_confidence || {};
+  return (
+    <div style={{ marginTop: 12, padding: 12, borderRadius: 8, background: "rgba(77,166,255,0.045)", border: "1px solid rgba(77,166,255,0.18)" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "flex-start", marginBottom: 10 }}>
+        <div>
+          <div style={{ fontWeight: 900, fontSize: 16 }}>{final.final_action_label || quick.movement_label || "Quick Momentum"}</div>
+          <div style={{ color: "var(--muted)", fontSize: 11 }}>Strategy Mode: {analysis.strategy_label || strategyLabel("quick_momentum_1_3d")}</div>
+        </div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <span className="badge" style={positionActionStyle({ risk_level: final.risk_level, action: final.final_action })}>{final.risk_level || "medium"} risk</span>
+          <span className="badge">Score {quick.movement_score ?? "-"}</span>
+        </div>
+      </div>
+      <div style={{ color: "var(--text2)", fontSize: 12, lineHeight: 1.5, marginBottom: 10 }}>{final.main_reason || "Quick momentum setup evaluated."}</div>
+      <DetailGrid items={[
+        ["Market Condition", market.regime || "-"],
+        ["Market Permission", market.new_long_permission || "-"],
+        ["Sector", market.sector_status || "-"],
+        ["Momentum Label", quick.movement_label || "-"],
+        ["Setup Type", quick.setup_type || "-"],
+        ["Trigger", fmtMoneyDash(quick.trigger_price)],
+        ["Pullback Zone", quick.pullback_zone_low || quick.pullback_zone_high ? `${fmtMoneyDash(quick.pullback_zone_low)} - ${fmtMoneyDash(quick.pullback_zone_high)}` : "-"],
+        ["Stop", fmtMoneyDash(quick.stop_level || final.invalid_below)],
+        ["Stop Quality", quick.stop_quality || "-"],
+        ["Target 1", fmtMoneyDash(quick.target_1 || final.target_1)],
+        ["Target 2", fmtMoneyDash(quick.target_2 || final.target_2)],
+        ["Time Stop", `${final.time_stop_days || 3} days`],
+      ]} />
+      <div style={{ marginTop: 8, padding: "8px 10px", borderRadius: 6, background: "rgba(255,255,255,0.025)", border: "1px solid var(--border2)", color: "var(--text)", fontSize: 12, lineHeight: 1.45 }}>
+        <strong>Next step:</strong> {final.next_step || "Watch for confirmation. No order is placed."}
+      </div>
+      <details style={{ marginTop: 10 }}>
+        <summary style={{ cursor: "pointer", fontWeight: 800, fontSize: 12 }}>Data Confidence</summary>
+        <div style={{ marginTop: 8 }}>
+          <DetailGrid items={[
+            ["Quote Source", data.quote_source || "-"],
+            ["Quote Updated", data.quote_updated_at ? formatQuoteTimeEt(data.quote_updated_at) : "-"],
+            ["Quote Stale", data.quote_is_stale ? "Yes" : "No"],
+            ["Candle Source", data.candle_source || "-"],
+            ["Candle Updated", data.candle_updated_at || "-"],
+            ["Volume Confidence", data.volume_confidence || "-"],
+            ["Invalid Timestamp", data.invalid_timestamp ? "Yes" : "No"],
+          ]} />
+        </div>
+      </details>
     </div>
   );
 }
@@ -2523,7 +2609,7 @@ function FinalActionCard({ summary, preview }) {
 }
 
 function UnifiedActionCard({ analysis, mode = "entry" }) {
-  const ua = analysis?.unified_action;
+  const ua = analysis?.unified_action || analysis?.final_action_card;
   if (!ua) return null;
   const fa = String(ua.final_action || "").toLowerCase();
   const isGreen = ["entry_ready"].includes(fa);
@@ -2667,10 +2753,12 @@ function PortfolioLiveAnalysisPanel({ data, error }) {
   return (
     <div style={{ display: "grid", gap: 12 }}>
       <ExitManagerV2Preview preview={live.portfolio_exit_v2} />
+      <QuickMomentumPanel analysis={live} />
       <details open style={{ padding: 12, borderRadius: 8, background: "rgba(255,255,255,0.018)", border: "1px solid var(--border2)" }}>
         <summary style={{ cursor: "pointer", fontWeight: 800 }}>Decision Summary</summary>
         <div style={{ marginTop: 10 }}>
           <DetailGrid items={[
+            ["Strategy Mode", live.strategy_label || plan.strategy_label || strategyLabel(live.strategy_mode || plan.strategy_mode)],
             ["Saved Entry", fmtMoney(plan.entry_price)],
             ["Saved Stop", fmtMoney(plan.stop_loss)],
             ["Current Price", fmtMoney(summary?.current_price ?? live.current_price)],
@@ -2734,6 +2822,7 @@ function PortfolioPage({ positions, onRefresh }) {
   const [saveErr, setSaveErr] = useState("");
   const [saveOk, setSaveOk]   = useState("");
   const [analyzeTicker, setAnalyzeTicker] = useState("");
+  const [analyzeStrategyMode, setAnalyzeStrategyMode] = useState("swing_3_10d");
   const [singleScan, setSingleScan] = useState(null);
   const [singleScanErr, setSingleScanErr] = useState("");
   const [singleScanLoading, setSingleScanLoading] = useState(false);
@@ -2745,7 +2834,7 @@ function PortfolioPage({ positions, onRefresh }) {
   const [form, setForm] = useState({
     ticker: "", entry_price: "", quantity: "",
     entry_date: new Date().toISOString().split("T")[0],
-    target_price: "", stop_loss: "", notes: ""
+    target_price: "", stop_loss: "", notes: "", strategy_mode: "swing_3_10d"
   });
 
   const flash = (ok, msg) => {
@@ -2778,13 +2867,15 @@ function PortfolioPage({ positions, onRefresh }) {
         entry_price: parseFloat(form.entry_price), quantity: parseInt(form.quantity),
         target_price: form.target_price ? parseFloat(form.target_price) : null,
         stop_loss:    form.stop_loss    ? parseFloat(form.stop_loss)    : null,
+        strategy_mode: form.strategy_mode || "swing_3_10d",
+        time_stop_days: form.strategy_mode === "quick_momentum_1_3d" ? 3 : null,
       }),
     });
     setSaving(false);
     if (error) return flash(false, `Failed: ${error}`);
     flash(true, `✓ ${form.ticker.toUpperCase()} position logged!`);
     setShowAdd(false);
-    setForm({ ticker: "", entry_price: "", quantity: "", entry_date: new Date().toISOString().split("T")[0], target_price: "", stop_loss: "", notes: "" });
+    setForm({ ticker: "", entry_price: "", quantity: "", entry_date: new Date().toISOString().split("T")[0], target_price: "", stop_loss: "", notes: "", strategy_mode: "swing_3_10d" });
     onRefresh();
   };
 
@@ -2811,6 +2902,8 @@ function PortfolioPage({ positions, onRefresh }) {
         score_at_entry: toOptionalNumber(editPos.score_at_entry),
         setup_at_entry: editPos.setup_at_entry || "",
         notes: editPos.notes || "",
+        strategy_mode: editPos.strategy_mode || "swing_3_10d",
+        time_stop_days: editPos.strategy_mode === "quick_momentum_1_3d" ? Number(editPos.time_stop_days || 3) : (editPos.time_stop_days || null),
       };
       if (payload.quantity <= 0) throw new Error("Quantity must be greater than zero.");
       if ([payload.target_price, payload.stop_loss, payload.score_at_entry].some(Number.isNaN)) {
@@ -2851,7 +2944,7 @@ function PortfolioPage({ positions, onRefresh }) {
     setSingleScanErr("");
     const { data, error } = await api("/api/screener/single", {
       method: "POST",
-      body: JSON.stringify({ ticker }),
+      body: JSON.stringify({ ticker, strategy_mode: analyzeStrategyMode }),
     });
     setSingleScanLoading(false);
     if (error) {
@@ -2873,6 +2966,7 @@ function PortfolioPage({ positions, onRefresh }) {
       body: JSON.stringify({
         symbol,
         position_id: position.id || null,
+        strategy_mode: position.strategy_mode || "swing_3_10d",
       }),
     });
     setLiveAnalysisLoading("");
@@ -3010,6 +3104,7 @@ function PortfolioPage({ positions, onRefresh }) {
               onKeyDown={e => e.key === "Enter" && analyzeSingleTicker()}
             />
           </div>
+          <StrategyModeSelect value={analyzeStrategyMode} onChange={setAnalyzeStrategyMode} />
           <button className="btn btn-blue" onClick={analyzeSingleTicker} disabled={singleScanLoading || !analyzeTicker.trim()}>
             {singleScanLoading ? "Scanning..." : "Analyze"}
           </button>
@@ -3022,6 +3117,7 @@ function PortfolioPage({ positions, onRefresh }) {
               {singleScan.score != null && <ScoreGauge score={singleScan.score} />}
               {confidenceValue(singleScan) != null && <span className="badge">Confidence {formatConfidence(singleScan)}</span>}
               {singleScan.setup && <span className="tag">{singleScan.setup}</span>}
+              <span className="badge">Strategy Mode: {singleScan.strategy_label || strategyLabel(singleScan.strategy_mode)}</span>
               <AnalysisMetaBadges analysis={singleScan} />
               {singleScan.rescore_status && singleScan.rescore_status !== "ok" && <span className="badge">{singleScan.rescore_status}</span>}
             </div>
@@ -3049,7 +3145,7 @@ function PortfolioPage({ positions, onRefresh }) {
             {confidenceValue(singleScan) != null && (
               <div style={{ marginTop: 8, fontSize: 11, color: "var(--muted)" }}>Estimated confidence, not historical win rate.</div>
             )}
-            <div style={{ marginTop: 10, padding: "10px 12px", borderRadius: 6, background: "rgba(255,255,255,0.035)", border: "1px solid var(--border2)" }}>
+            {singleScan.strategy_mode !== "quick_momentum_1_3d" && <div style={{ marginTop: 10, padding: "10px 12px", borderRadius: 6, background: "rgba(255,255,255,0.035)", border: "1px solid var(--border2)" }}>
               <DetailGrid items={[
                 ["Price Zone", priceZoneLabel(singleScan.price_zone_status || singleScan.entry_signal?.price_zone_status)],
                 ["Confirmation", confirmationLabel(singleScan.confirmation_passed || singleScan.entry_signal?.confirmation_passed)],
@@ -3063,11 +3159,12 @@ function PortfolioPage({ positions, onRefresh }) {
                   Price is in the suggested entry zone, but Buy signal is not confirmed yet. Waiting for 1H confirmation.
                 </div>
               )}
-            </div>
+            </div>}
             <UnifiedActionCard analysis={singleScan} mode="entry" />
-            <SuggestedEntryZone zone={singleScan.suggested_entry_zone} entrySignal={singleScan.entry_signal} />
+            <QuickMomentumPanel analysis={singleScan} />
+            {singleScan.strategy_mode !== "quick_momentum_1_3d" && <SuggestedEntryZone zone={singleScan.suggested_entry_zone} entrySignal={singleScan.entry_signal} />}
             <PositionSizingPreview sizing={singleScan.position_sizing_preview} heat={singleScan.portfolio_heat_preview} />
-            <StructurePlanV2Preview plan={singleScan.entry_plan_v2 || singleScan.entry_plan_v2_json} />
+            {singleScan.strategy_mode !== "quick_momentum_1_3d" && <StructurePlanV2Preview plan={singleScan.entry_plan_v2 || singleScan.entry_plan_v2_json} />}
             <DecisionLayerSections analysis={singleScan} />
           </div>
         )}
@@ -3102,7 +3199,10 @@ function PortfolioPage({ positions, onRefresh }) {
                     const badge = URGENCY_BADGE[p.sell_urgency || 0];
                     return [
                       <tr key={key}>
-                        <td style={{ fontWeight: 700, fontSize: 13 }}>{p.ticker}</td>
+                        <td style={{ fontWeight: 700, fontSize: 13 }}>
+                          <div>{p.ticker}</div>
+                          <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 3 }}>{strategyLabel(p.strategy_mode)}</div>
+                        </td>
                         <td>${parseFloat(p.entry_price).toFixed(2)}</td>
                         <td>
                           <div>${typeof p.current_price === "number" ? p.current_price.toFixed(2) : "–"}</div>
@@ -3176,6 +3276,7 @@ function PortfolioPage({ positions, onRefresh }) {
             {saveErr && <div className="err-box">{saveErr}</div>}
             <div className="grid-2" style={{ gap: 10 }}>
               <div><label>Ticker *</label><input className="input" placeholder="AAPL" value={form.ticker} onChange={e => setForm({ ...form, ticker: e.target.value.toUpperCase() })} /></div>
+              <StrategyModeSelect value={form.strategy_mode} onChange={value => setForm({ ...form, strategy_mode: value })} />
               <div><label>Entry Price *</label><input className="input" type="number" step="0.01" placeholder="185.00" value={form.entry_price} onChange={e => setForm({ ...form, entry_price: e.target.value })} /></div>
               <div><label>Quantity *</label><input className="input" type="number" placeholder="10" value={form.quantity} onChange={e => setForm({ ...form, quantity: e.target.value })} /></div>
               <div><label>Entry Date *</label><input className="input" type="date" value={form.entry_date} onChange={e => setForm({ ...form, entry_date: e.target.value })} /></div>
@@ -3199,6 +3300,7 @@ function PortfolioPage({ positions, onRefresh }) {
             <div className="grid-2" style={{ gap: 10 }}>
               <div><label>Entry Price</label><input className="input" type="number" step="0.01" value={editPos.entry_price ?? ""} onChange={e => setEditPos({ ...editPos, entry_price: e.target.value })} /></div>
               <div><label>Quantity</label><input className="input" type="number" step="1" value={editPos.quantity ?? ""} onChange={e => setEditPos({ ...editPos, quantity: e.target.value })} /></div>
+              <StrategyModeSelect value={editPos.strategy_mode || "swing_3_10d"} onChange={value => setEditPos({ ...editPos, strategy_mode: value, time_stop_days: value === "quick_momentum_1_3d" ? (editPos.time_stop_days || 3) : editPos.time_stop_days })} />
               <div><label>Target Price</label><input className="input" type="number" step="0.01" value={editPos.target_price ?? ""} onChange={e => setEditPos({ ...editPos, target_price: e.target.value })} /></div>
               <div><label>Stop Loss</label><input className="input" type="number" step="0.01" value={editPos.stop_loss ?? ""} onChange={e => setEditPos({ ...editPos, stop_loss: e.target.value })} /></div>
               <div><label>Score at Entry</label><input className="input" type="number" step="1" value={editPos.score_at_entry ?? ""} onChange={e => setEditPos({ ...editPos, score_at_entry: e.target.value })} /></div>
@@ -3684,10 +3786,10 @@ function EntryWatchlistPage() {
                       <td><span className="badge" style={entryStatusStyle(status)}>{ENTRY_STATUS_LABELS[status] || compactStatus(status)}</span></td>
                       <td>
                         <span className="badge" style={decisionStatusStyle(timing)}>{timingLabel(timing)}</span>
-                        {(w.entry_plan_v2_json || w.v2_entry_plan_type) && (
+                        {(w.strategy_mode || w.current_live_action || w.alert_stage) && (
                           <div style={{ marginTop: 4 }}>
                             <span className="tag" style={{ fontSize: 10, color: "var(--green2)", borderColor: "rgba(163,247,191,0.32)" }}>
-                              {w.v2_plan_quality || "Watch"} · {normalizeActionLabel(w.v2_action_status || w.v2_entry_plan_type || "watch_only")}
+                              {strategyLabel(w.strategy_mode)} - {normalizeActionLabel(w.current_live_action || w.alert_stage || "watch_only")}
                             </span>
                           </div>
                         )}
@@ -3744,6 +3846,79 @@ function EntryWatchlistPage() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function MomentumRadarPage() {
+  const [radar, setRadar] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const loadRadar = async () => {
+    setLoading(true);
+    setError("");
+    const { data, error } = await api("/api/momentum-radar?active_limit=30&raw_limit=150");
+    setLoading(false);
+    if (error) {
+      setError(error);
+      return;
+    }
+    setRadar(data);
+  };
+  useEffect(() => { loadRadar(); }, []);
+  const rows = radar?.candidates || [];
+  return (
+    <div className="fade-up">
+      <PageBrief title="Momentum Radar">
+        Quick Momentum scans a limited active universe for 1 to 3 day setups. It is research-only and never places orders.
+      </PageBrief>
+      <div className="section-header">
+        <div>
+          <div className="section-title">Momentum Radar</div>
+          <div className="section-sub">Combines market lists, leadership, watchlist, portfolio, and sector baskets. Actively monitors 30 max.</div>
+        </div>
+        <button className="btn btn-blue" onClick={loadRadar} disabled={loading}>{loading ? "Scanning..." : "Refresh Radar"}</button>
+      </div>
+      {error && <div className="err-box">{error}</div>}
+      {radar && (
+        <div style={{ marginBottom: 10, display: "flex", gap: 8, flexWrap: "wrap", fontSize: 11, color: "var(--muted)" }}>
+          <span>Strategy Mode: {radar.strategy_label}</span>
+          <span>Raw candidates: {radar.raw_candidate_count}</span>
+          <span>Active: {radar.actively_monitored_count}</span>
+        </div>
+      )}
+      <div className="card" style={{ padding: 0 }}>
+        <div className="table-wrap">
+          <table style={{ minWidth: 1180 }}>
+            <thead>
+              <tr><th>Ticker</th><th>Final Action</th><th>Score</th><th>Setup</th><th>Trigger</th><th>Pullback Zone</th><th>Stop</th><th>Targets</th><th>Market</th><th>Data</th><th>Sources</th></tr>
+            </thead>
+            <tbody>
+              {rows.map(row => {
+                const final = row.final_action_card || {};
+                const data = row.data_confidence || {};
+                const market = row.market_condition || {};
+                return (
+                  <tr key={row.ticker}>
+                    <td style={{ fontWeight: 800 }}>{row.ticker}</td>
+                    <td><span className="badge" style={positionActionStyle({ risk_level: final.risk_level, action: final.final_action })}>{final.final_action_label || row.alert_stage || "-"}</span></td>
+                    <td>{row.movement_score ?? "-"}</td>
+                    <td>{row.setup_type || "-"}</td>
+                    <td>{fmtMoneyDash(row.trigger_price)}</td>
+                    <td>{row.pullback_zone_low || row.pullback_zone_high ? `${fmtMoneyDash(row.pullback_zone_low)} - ${fmtMoneyDash(row.pullback_zone_high)}` : "-"}</td>
+                    <td>{fmtMoneyDash(row.stop_level)}</td>
+                    <td>{fmtMoneyDash(row.target_1)} / {fmtMoneyDash(row.target_2)}</td>
+                    <td>{market.regime || "-"}<div style={{ color: "var(--muted)", fontSize: 10 }}>{market.new_long_permission || ""}</div></td>
+                    <td>{data.volume_confidence || "-"}<div style={{ color: data.quote_is_stale ? "var(--amber)" : "var(--muted)", fontSize: 10 }}>{data.quote_is_stale ? "stale" : "fresh"}</div></td>
+                    <td style={{ fontSize: 10, color: "var(--muted)" }}>{(row.sources || []).slice(0, 3).join(", ")}</td>
+                  </tr>
+                );
+              })}
+              {!loading && rows.length === 0 && <tr><td colSpan={11} style={{ textAlign: "center", padding: 30, color: "var(--muted)" }}>No momentum candidates loaded.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   );
 }
@@ -4795,6 +4970,7 @@ export default function App() {
   const tabs = [
     { id: "dashboard", label: "Market Today" },
     { id: "screener",  label: "Screener" + (topToday > 0 ? ` (${topToday})` : "") },
+    { id: "momentum", label: "Momentum Radar" },
     { id: "leadership", label: "Leadership Board" },
     { id: "analytics", label: "Analytics" },
     { id: "entryWatch", label: "Entry Watchlist" },
@@ -4805,9 +4981,10 @@ export default function App() {
     { id: "settings",  label: "Settings" },
   ];
 
-  const titles = { dashboard: "Market Today", screener: "Stock Screener", leadership: "Leadership Board", analytics: "Universe Analytics", entryWatch: "Entry Signal Watchlist", portfolio: "Portfolio Monitor", history: "Trade History", alerts: "Telegram Alerts", feedback: "User Feedback", settings: "Settings" };
+  const titles = { dashboard: "Market Today", screener: "Stock Screener", momentum: "Momentum Radar", leadership: "Leadership Board", analytics: "Universe Analytics", entryWatch: "Entry Signal Watchlist", portfolio: "Portfolio Monitor", history: "Trade History", alerts: "Telegram Alerts", feedback: "User Feedback", settings: "Settings" };
   const subs   = {
     entryWatch: "Pre-buy entry timing confirmation. Portfolio starts after buying.",
+    momentum: "Quick Momentum 1 to 3 day radar. Research only, no execution.",
     leadership: "Relative strength and sector leadership ranking. Not a buy list.",
     analytics:  "Compare historical signal follow-through across scanner universes",
     screener:  "Find high-probability setups · Score ≥70 = quality entry",
@@ -4845,6 +5022,7 @@ export default function App() {
             </div>
             {tab === "dashboard" && <MarketTodayPage admin />}
             {tab === "screener"  && <ScreenerPage onScanComplete={loadData} />}
+            {tab === "momentum" && <MomentumRadarPage />}
             {tab === "leadership" && <LeadershipBoardPage />}
             {tab === "analytics" && <UniverseAnalyticsPage />}
             {tab === "entryWatch" && <EntryWatchlistPage />}
