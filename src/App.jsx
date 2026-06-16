@@ -104,16 +104,23 @@ const normalizeActionLabel = value => ({
   near_entry: "Near Entry",
   wait_for_confirmation: "Wait for Confirmation",
   wait_for_confirmation_constructive: "Wait for Confirmation",
-  wait_for_1h_confirmation: "Wait for Confirmation",
+  wait_for_1h_confirmation: "Wait — 1H Pending",
+  wait_for_trigger: "Waiting for Trigger",
   wait_for_pullback: "Wait for Pullback",
   wait_for_breakout: "Wait for Breakout",
   watch_only: "Watch Only",
   too_extended: "Too Extended",
+  missed_first_entry: "Missed First Entry",
+  pullback_forming: "Pullback Forming",
+  reconfirmation_needed: "Reconfirmation Needed",
+  setup_forming: "Setup Forming",
+  momentum_continuation_forming: "Momentum Forming",
   no_clean_setup: "No Clean Setup",
   invalidated: "Invalidated",
   avoid: "Avoid",
   market_hostile: "Market Hostile",
   data_limited: "Data Limited",
+  data_stale: "Price Stale",
 }[String(value || "").toLowerCase()] || compactStatus(value));
 const VOLUME_CONFIDENCE_STYLE = {
   High: { color: "var(--green)", borderColor: "rgba(34,197,94,0.42)", background: "rgba(34,197,94,0.08)" },
@@ -134,8 +141,9 @@ const decisionStatusStyle = status => {
   const value = String(status || "");
   if (value === "entry_ready") return { color: "var(--green)", borderColor: "rgba(34,197,94,0.42)", background: "rgba(34,197,94,0.08)" };
   if (["wait_for_confirmation", "wait_for_1h_confirmation", "market_hostile"].includes(value)) return { color: "var(--blue)", borderColor: "rgba(77,166,255,0.42)", background: "rgba(77,166,255,0.08)" };
-  if (["watch_only", "too_extended"].includes(value)) return { color: "var(--amber)", borderColor: "rgba(251,176,36,0.42)", background: "rgba(251,176,36,0.08)" };
-  if (["avoid", "invalidated"].includes(value)) return { color: "var(--red)", borderColor: "rgba(255,77,77,0.42)", background: "rgba(255,77,77,0.08)" };
+  if (["watch_only", "too_extended", "missed_first_entry", "pullback_forming", "data_stale"].includes(value)) return { color: "var(--amber)", borderColor: "rgba(251,176,36,0.42)", background: "rgba(251,176,36,0.08)" };
+  if (["avoid", "invalidated", "market_hostile"].includes(value)) return { color: "var(--red)", borderColor: "rgba(255,77,77,0.42)", background: "rgba(255,77,77,0.08)" };
+  if (["reconfirmation_needed", "setup_forming"].includes(value)) return { color: "var(--blue)", borderColor: "rgba(77,166,255,0.42)", background: "rgba(77,166,255,0.08)" };
   return { color: "var(--muted)", borderColor: "var(--border2)", background: "rgba(255,255,255,0.035)" };
 };
 const leadershipStyle = label => {
@@ -162,17 +170,24 @@ const timingLabel = value => ({
   entry_ready: "Entry Ready",
   tradeable_now: "Entry Ready",
   near_entry: "Near Entry",
-  wait_for_1h_confirmation: "Wait for Confirmation",
+  wait_for_1h_confirmation: "Wait — 1H Pending",
   wait_for_confirmation: "Wait for Confirmation",
   wait_for_confirmation_constructive: "Wait for Confirmation",
+  wait_for_trigger: "Waiting for Trigger",
   wait_for_pullback: "Wait for Pullback",
   wait_for_breakout: "Wait for Breakout",
   watch_only: "Watch Only",
   watch_for_entry: "Watch Only",
+  missed_first_entry: "Missed First Entry",
+  pullback_forming: "Pullback Forming",
+  reconfirmation_needed: "Reconfirmation Needed",
+  setup_forming: "Setup Forming",
+  momentum_continuation_forming: "Momentum Forming",
   no_clean_setup: "No Clean Setup",
   too_extended: "Too Extended",
   market_hostile: "Market Hostile",
   data_limited: "Data Limited",
+  data_stale: "Price Stale",
   avoid: "Avoid",
   invalidated: "Invalidated",
 }[value] || compactStatus(value));
@@ -182,15 +197,21 @@ const actionLabel = value => ({
   consider_entry: "Near Entry",
   buy_signal_ready: "Entry Ready",
   near_entry: "Near Entry",
-  wait_for_1h_confirmation: "Wait for Confirmation",
+  wait_for_1h_confirmation: "Wait — 1H Pending",
   wait_for_confirmation: "Wait for Confirmation",
+  wait_for_trigger: "Waiting for Trigger",
   market_hostile: "Market Hostile",
   too_extended: "Too Extended",
   watch_only: "Watch Only",
   wait_for_pullback: "Wait for Pullback",
   wait_for_breakout: "Wait for Breakout",
+  missed_first_entry: "Missed First Entry",
+  pullback_forming: "Pullback Forming",
+  reconfirmation_needed: "Reconfirmation Needed",
+  setup_forming: "Setup Forming",
   no_clean_setup: "No Clean Setup",
   data_limited: "Data Limited",
+  data_stale: "Price Stale",
   watch: "Watch Only",
   wait: "Wait for Confirmation",
   avoid: "Avoid",
@@ -216,7 +237,10 @@ const normalizedWatchEntryTiming = row => {
     return "wait_for_1h_confirmation";
   }
   if (timing === "wait_for_confirmation") return "wait_for_confirmation";
-  if (timing === "wait_for_pullback") return "watch_only";
+  if (timing === "wait_for_pullback") return "wait_for_pullback";
+  if (timing === "missed_first_entry") return "missed_first_entry";
+  if (timing === "pullback_forming") return "pullback_forming";
+  if (timing === "reconfirmation_needed") return "reconfirmation_needed";
   if (timing === "enter_now_aggressive") return "entry_ready";
   return timing || row?.status;
 };
@@ -791,6 +815,35 @@ function sectorMappingMissing(analysis) {
   );
 }
 
+function leadershipDetails(analysis) {
+  return analysis?.leadership_metadata_json || analysis?.details_json || {};
+}
+
+function rsAnomalyFlagged(analysis) {
+  const details = leadershipDetails(analysis);
+  return Boolean(analysis?.rs_anomaly_flag || details?.rs_anomaly_flag || analysis?.corporate_action_risk || details?.corporate_action_risk);
+}
+
+function rsAnomalyReason(analysis) {
+  const details = leadershipDetails(analysis);
+  return analysis?.rs_anomaly_reason || details?.rs_anomaly_reason || "Relative-strength value may be distorted by a split or ADS ratio change.";
+}
+
+function rsValueAnomalous(analysis, key) {
+  const value = Number(analysis?.[key]);
+  if (!Number.isFinite(value)) return false;
+  const details = leadershipDetails(analysis);
+  const fields = analysis?.rs_anomaly_fields || details?.rs_anomaly_fields || [];
+  return fields.includes(key) || Math.abs(value) > Number(analysis?.rs_anomaly_threshold || details?.rs_anomaly_threshold || 300);
+}
+
+function rsCellValue(analysis, key) {
+  if (rsAnomalyFlagged(analysis) && rsValueAnomalous(analysis, key)) {
+    return <span className="badge" title={rsAnomalyReason(analysis)} style={leadershipStyle("Laggard")}>Data anomaly</span>;
+  }
+  return fmtPctSigned(analysis?.[key]);
+}
+
 function SectorStrengthBadge({ analysis }) {
   const label = analysis?.sector_strength_label;
   if (!label && !analysis?.sector_name) return null;
@@ -813,6 +866,13 @@ function SectorStrengthBadge({ analysis }) {
 function RelativeStrengthBadge({ analysis }) {
   const rs = analysis?.rs_3m_vs_spy ?? analysis?.rs_1m_vs_spy;
   if (rs == null || rs === "") return null;
+  if (rsAnomalyFlagged(analysis) && rsValueAnomalous(analysis, "rs_3m_vs_spy")) {
+    return (
+      <span className="badge" title={rsAnomalyReason(analysis)} style={leadershipStyle("Laggard")}>
+        RS data anomaly
+      </span>
+    );
+  }
   return (
     <span className="badge" title={`1M vs SPY ${fmtPctSigned(analysis?.rs_1m_vs_spy)} | 3M vs SPY ${fmtPctSigned(analysis?.rs_3m_vs_spy)} | 1M vs sector ${fmtPctSigned(analysis?.rs_1m_vs_sector)} | 3M vs sector ${fmtPctSigned(analysis?.rs_3m_vs_sector)}`} style={Number(rs) >= 0 ? leadershipStyle("Constructive") : leadershipStyle("Laggard")}>
       RS vs SPY 3M {fmtPctSigned(analysis?.rs_3m_vs_spy)}
@@ -835,7 +895,6 @@ function AnalysisMetaBadges({ analysis }) {
   if (!analysis) return null;
   return (
     <>
-      <ActionStatusBadge analysis={analysis} />
       <MarketRegimeBadge analysis={analysis} />
       <SectorStrengthBadge analysis={analysis} />
       <LeadershipBadge analysis={analysis} />
@@ -1413,6 +1472,7 @@ function SingleTickerCheck({ guest = false }) {
               Estimated confidence, not historical win rate.
             </div>
           )}
+          {!guest && <UnifiedActionCard analysis={result} mode="entry" />}
           {canShowSuggestedZone && (
             <SuggestedEntryZone
               zone={suggestedZone}
@@ -1889,7 +1949,7 @@ function ScreenerPage({ onScanComplete, readOnly = false }) {
                         )}
                         {(r.entry_plan_v2 || r.entry_plan_v2_json || r.v2_entry_plan_type) && (
                           <span className="tag" style={{ fontSize: 10, color: "var(--green2)", borderColor: "rgba(163,247,191,0.32)" }}>
-                            V2 {r.v2_plan_quality || r.entry_plan_v2?.v2_plan_quality || "Preview"} · {r.v2_action_status || r.entry_plan_v2?.v2_action_status || "Watch"}
+                            {r.v2_plan_quality || r.entry_plan_v2?.v2_plan_quality || "Watch"} · {normalizeActionLabel(r.v2_action_status || r.entry_plan_v2?.v2_action_status || "watch_only")}
                           </span>
                         )}
                       </div>
@@ -1946,6 +2006,7 @@ function ScreenerPage({ onScanComplete, readOnly = false }) {
                           <div className="signals-list">{analysis.score.signals.map((s, i) => <span key={i} className="signal-pill">{s}</span>)}</div>
                         </div>
                       )}
+                      <UnifiedActionCard analysis={analysis} mode="entry" />
                       {analysis.suggested_entry_zone && (
                         <SuggestedEntryZone
                           zone={analysis.suggested_entry_zone}
@@ -1990,6 +2051,13 @@ const exitUrgencyStyle = urgency => {
   if (urgency === "Medium") return { color: "var(--amber)", borderColor: "rgba(251,176,36,0.45)", background: "rgba(251,176,36,0.08)" };
   return { color: "var(--green2)", borderColor: "rgba(34,197,94,0.35)", background: "rgba(34,197,94,0.08)" };
 };
+const positionActionStyle = summary => {
+  const risk = String(summary?.risk_level || "").toLowerCase();
+  const action = String(summary?.action || "");
+  if (risk === "high" || action === "EXIT_STOP_TRIGGERED" || action === "HIGH_EXIT_RISK") return { color: "var(--red)", borderColor: "rgba(255,77,77,0.45)", background: "rgba(255,77,77,0.10)" };
+  if (risk === "medium" || ["HOLD_CAREFULLY", "REDUCE_TAKE_PARTIAL", "AVOID_ADDING", "DO_NOT_ADD"].includes(action)) return { color: "var(--amber)", borderColor: "rgba(251,176,36,0.45)", background: "rgba(251,176,36,0.10)" };
+  return { color: "var(--green)", borderColor: "rgba(0,255,178,0.45)", background: "rgba(0,255,178,0.10)" };
+};
 const fmtMoneyDash = value => value == null || value === "" || Number.isNaN(Number(value)) ? "—" : `$${Number(value).toFixed(2)}`;
 const fmtRRDash = value => value == null || value === "" || Number.isNaN(Number(value)) ? "—" : `1:${Number(value).toFixed(2)}`;
 
@@ -2012,9 +2080,14 @@ const listify = value => {
   return [value].filter(Boolean);
 };
 const ENTRY_STATUS_LABELS = {
-  waiting_for_pullback: "Waiting for pullback",
-  waiting_for_1h_confirmation: "Waiting for 1H confirmation",
-  entry_confirmed: "Entry confirmed",
+  waiting_for_pullback: "Waiting for Pullback",
+  waiting_for_1h_confirmation: "Wait — 1H Pending",
+  entry_confirmed: "Entry Confirmed",
+  entry_ready: "Entry Ready",
+  missed_entry: "Missed — Wait for Pullback",
+  pullback_forming: "Pullback Forming",
+  setup_forming: "Setup Forming",
+  reconfirmation_needed: "Reconfirmation Needed",
   invalidated: "Invalidated",
   expired: "Expired",
   cancelled: "Cancelled",
@@ -2022,16 +2095,22 @@ const ENTRY_STATUS_LABELS = {
 const ENTRY_ACTION_LABELS = {
   wait: "Wait",
   watch: "Watch",
-  wait_for_pullback: "Wait for pullback",
-  wait_for_1h_confirmation: "Wait for 1H confirmation",
+  wait_for_pullback: "Wait for Pullback",
+  wait_for_1h_confirmation: "Wait — 1H Pending",
+  wait_for_trigger: "Waiting for Trigger",
   consider_entry: "Buy Watch",
+  entry_ready: "Entry Ready",
+  missed_first_entry: "Missed First Entry",
+  pullback_forming: "Pullback Forming",
+  reconfirmation_needed: "Reconfirmation Needed",
   avoid: "Avoid",
   cancelled: "Cancelled",
 };
 const entryStatusStyle = status => {
-  if (status === "entry_confirmed") return { color: "var(--green)", borderColor: "var(--green)", background: "rgba(0,255,178,.08)" };
+  if (["entry_confirmed", "entry_ready"].includes(status)) return { color: "var(--green)", borderColor: "var(--green)", background: "rgba(0,255,178,.08)" };
   if (["invalidated", "expired", "cancelled"].includes(status)) return { color: "var(--red)", borderColor: "var(--red)", background: "rgba(255,77,77,.08)" };
-  if (status === "waiting_for_pullback") return { color: "var(--amber)", borderColor: "var(--amber)", background: "rgba(251,176,36,.08)" };
+  if (["waiting_for_pullback", "missed_entry", "pullback_forming"].includes(status)) return { color: "var(--amber)", borderColor: "var(--amber)", background: "rgba(251,176,36,.08)" };
+  if (["reconfirmation_needed"].includes(status)) return { color: "var(--blue)", borderColor: "var(--blue)", background: "rgba(77,166,255,.08)" };
   return { color: "var(--blue)", borderColor: "var(--blue)", background: "rgba(77,166,255,.08)" };
 };
 const numberOrNull = value => value == null || value === "" || Number.isNaN(Number(value)) ? null : Number(value);
@@ -2155,84 +2234,97 @@ function DecisionLayerSections({ analysis, compact = false }) {
   return (
     <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
       {hasDecisionMeta && (
-        <div style={sectionStyle}>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 8 }}>
-            <ActionStatusBadge analysis={analysis} />
-            <MarketRegimeBadge analysis={analysis} />
-            <SectorStrengthBadge analysis={analysis} />
-            <LeadershipBadge analysis={analysis} />
-            <RelativeStrengthBadge analysis={analysis} />
-            <VolumeConfidenceBadge analysis={analysis} />
+        <details open style={sectionStyle}>
+          <summary style={{ cursor: "pointer", fontWeight: 800, marginBottom: 0, listStyle: "none", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span>Market Context</span>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              <MarketRegimeBadge analysis={analysis} />
+              <SectorStrengthBadge analysis={analysis} />
+            </div>
+          </summary>
+          <div style={{ marginTop: 10 }}>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 8 }}>
+              <LeadershipBadge analysis={analysis} />
+              <RelativeStrengthBadge analysis={analysis} />
+              <VolumeConfidenceBadge analysis={analysis} />
+            </div>
+            <DetailGrid items={[
+              ["Leadership", analysis.leadership_rank_label || "-"],
+              ["Leadership Reason", analysis.leadership_reason || analysis.leadership_warning || "-"],
+              ["Sector", analysis.sector_name ? `${analysis.sector_name}${analysis.sector_etf ? ` (${analysis.sector_etf})` : ""}` : "-"],
+              ["RS vs SPY", `1M ${fmtPctSigned(analysis.rs_1m_vs_spy)} / 3M ${fmtPctSigned(analysis.rs_3m_vs_spy)}`],
+              ["RS vs Sector", `1M ${fmtPctSigned(analysis.rs_1m_vs_sector)} / 3M ${fmtPctSigned(analysis.rs_3m_vs_sector)}`],
+              ["Liquidity", analysis.liquidity_status || "-"],
+              ["Market Reason", analysis.market_regime_reason || "-"],
+              ["Volume Note", analysis.volume_warning || analysis.volume_confidence_reason || "-"],
+            ]} />
           </div>
-          <DetailGrid items={[
-            ["Action Reason", analysis.action_reason || analysis.entry_block_reason || "-"],
-            ["Leadership", analysis.leadership_rank_label || "-"],
-            ["Leadership Reason", analysis.leadership_reason || analysis.leadership_warning || "-"],
-            ["Sector", analysis.sector_name ? `${analysis.sector_name}${analysis.sector_etf ? ` (${analysis.sector_etf})` : ""}` : "-"],
-            ["RS vs SPY", `1M ${fmtPctSigned(analysis.rs_1m_vs_spy)} / 3M ${fmtPctSigned(analysis.rs_3m_vs_spy)}`],
-            ["RS vs Sector", `1M ${fmtPctSigned(analysis.rs_1m_vs_sector)} / 3M ${fmtPctSigned(analysis.rs_3m_vs_sector)}`],
-            ["Liquidity", analysis.liquidity_status || "-"],
-            ["Setup Validity", compactStatus(analysis.setup_validity)],
-            ["Risk Status", compactStatus(analysis.risk_status)],
-            ["Confirmation", compactStatus(analysis.confirmation_status)],
-            ["Market Reason", analysis.market_regime_reason || "-"],
-            ["Volume Note", analysis.volume_warning || analysis.volume_confidence_reason || "-"],
-          ]} />
-        </div>
+        </details>
       )}
       {summary && (
-        <div style={sectionStyle}>
-          <div style={{ fontWeight: 800, marginBottom: 8 }}>Trade Readiness</div>
-          <DetailGrid items={[
-            ["Daily Context", summary.daily_context || "-"],
-            ["4H Setup", summary.four_hour_setup || "-"],
-            ["1H Entry", summary.one_hour_entry || "-"],
-            ["Quality Grade", summary.quality_grade || analysis.quality_grade || "-"],
-            ["Timing", summary.timing || timingLabel(summary.trade_readiness)],
-            ["Action", summary.action || actionLabel(entrySignal?.action)],
-            ["Expected Hold", summary.expected_holding_period || "-"],
-          ]} />
-        </div>
+        <details style={sectionStyle}>
+          <summary style={{ cursor: "pointer", fontWeight: 800 }}>Trade Readiness</summary>
+          <div style={{ marginTop: 10 }}>
+            <DetailGrid items={[
+              ["Daily Context", summary.daily_context || "-"],
+              ["4H Setup", summary.four_hour_setup || "-"],
+              ["1H Entry", summary.one_hour_entry || "-"],
+              ["Quality Grade", summary.quality_grade || analysis.quality_grade || "-"],
+              ["Setup Validity", compactStatus(analysis.setup_validity)],
+              ["Risk Status", compactStatus(analysis.risk_status)],
+              ["Confirmation", compactStatus(analysis.confirmation_status)],
+              ["Timing", summary.timing || timingLabel(summary.trade_readiness)],
+              ["Action", summary.action || actionLabel(entrySignal?.action)],
+              ["Expected Hold", summary.expected_holding_period || "-"],
+            ]} />
+          </div>
+        </details>
       )}
       {entrySignal && (
-        <div style={sectionStyle}>
-          <div style={{ fontWeight: 800, marginBottom: 8 }}>Entry Signal</div>
-          <DetailGrid items={[
-            ["Status", timingLabel(entrySignal.status)],
-            ["Action", actionLabel(entrySignal.action)],
-            ["Timeframe", entrySignal.timeframe_used || "-"],
-            ["Valid For", entrySignal.signal_valid_for || "-"],
-            ["Expected Hold", entrySignal.expected_holding_period || "-"],
-          ]} />
-          <DecisionConditionList title="Trigger Conditions" items={entrySignal.trigger_conditions} />
-          <DecisionConditionList title="Missing Conditions" items={entrySignal.missing_conditions} />
-          <DecisionConditionList title="Invalidation Conditions" items={entrySignal.invalidation_conditions} />
-          {entrySignal.entry_signal_reason && (
-            <div style={{ marginTop: 8, color: "var(--text2)", fontSize: 12, lineHeight: 1.5 }}>{entrySignal.entry_signal_reason}</div>
-          )}
-        </div>
+        <details style={sectionStyle}>
+          <summary style={{ cursor: "pointer", fontWeight: 800 }}>Entry Signal Details</summary>
+          <div style={{ marginTop: 10 }}>
+            <DetailGrid items={[
+              ["Status", timingLabel(entrySignal.status)],
+              ["Action", actionLabel(entrySignal.action)],
+              ["Timeframe", entrySignal.timeframe_used || "-"],
+              ["Valid For", entrySignal.signal_valid_for || "-"],
+              ["Expected Hold", entrySignal.expected_holding_period || "-"],
+            ]} />
+            <DecisionConditionList title="Trigger Conditions" items={entrySignal.trigger_conditions} />
+            <DecisionConditionList title="Missing Conditions" items={entrySignal.missing_conditions} />
+            <DecisionConditionList title="Invalidation Conditions" items={entrySignal.invalidation_conditions} />
+            {entrySignal.entry_signal_reason && (
+              <div style={{ marginTop: 8, color: "var(--text2)", fontSize: 12, lineHeight: 1.5 }}>{entrySignal.entry_signal_reason}</div>
+            )}
+          </div>
+        </details>
       )}
       {risk && (
-        <div style={sectionStyle}>
-          <div style={{ fontWeight: 800, marginBottom: 8 }}>Risk Structure</div>
-          <DetailGrid items={[
-            ["Warning Level", risk.warning_level ?? "-"],
-            ["Hard Stop", fmtMoney(risk.hard_stop)],
-            ["Stop Quality", compactStatus(risk.stop_quality)],
-            ["Stop Distance", risk.stop_distance_pct == null ? "-" : `${Number(risk.stop_distance_pct).toFixed(2)}%`],
-            ["Stop ATR", risk.stop_atr_multiple == null ? "-" : Number(risk.stop_atr_multiple).toFixed(2)],
-            ["Invalidation", risk.invalidation_condition || "-"],
-          ]} />
-        </div>
+        <details style={sectionStyle}>
+          <summary style={{ cursor: "pointer", fontWeight: 800 }}>Risk Structure</summary>
+          <div style={{ marginTop: 10 }}>
+            <DetailGrid items={[
+              ["Warning Level", risk.warning_level ?? "-"],
+              ["Hard Stop", fmtMoney(risk.hard_stop)],
+              ["Stop Quality", compactStatus(risk.stop_quality)],
+              ["Stop Distance", risk.stop_distance_pct == null ? "-" : `${Number(risk.stop_distance_pct).toFixed(2)}%`],
+              ["Stop ATR", risk.stop_atr_multiple == null ? "-" : Number(risk.stop_atr_multiple).toFixed(2)],
+              ["Invalidation", risk.invalidation_condition || "-"],
+            ]} />
+          </div>
+        </details>
       )}
       {target && (
-        <div style={sectionStyle}>
-          <div style={{ fontWeight: 800, marginBottom: 8 }}>Target Realism</div>
-          <DetailGrid items={[
-            ["Rating", compactStatus(target.rating)],
-            ["Reason", target.reason || "-"],
-          ]} />
-        </div>
+        <details style={sectionStyle}>
+          <summary style={{ cursor: "pointer", fontWeight: 800 }}>Target Realism</summary>
+          <div style={{ marginTop: 10 }}>
+            <DetailGrid items={[
+              ["Rating", compactStatus(target.rating)],
+              ["Reason", target.reason || "-"],
+            ]} />
+          </div>
+        </details>
       )}
     </div>
   );
@@ -2241,58 +2333,38 @@ function DecisionLayerSections({ analysis, compact = false }) {
 function SuggestedEntryZone({ zone, description = "Research-only entry zone from the current live analysis.", action = null, entrySignal = null }) {
   if (!zone) return null;
   const avoid = zone.entry_grade === "Avoid";
-  const gradeColor = zone.entry_grade === "A" ? "var(--green)" : zone.entry_grade === "B" ? "var(--green2)" : zone.entry_grade === "C" ? "var(--amber)" : "var(--red)";
-  const timingValue = normalizedWatchEntryTiming({ entry_timing: zone.entry_timing });
-  const timingText = timingValue ? timingLabel(timingValue) : "—";
-  const timingCaution = ["watch_only", "wait_for_1h_confirmation", "wait_for_confirmation", "too_extended", "market_hostile"].includes(timingValue);
-  const timingColor = timingValue === "entry_ready" ? "var(--green)" : timingValue === "invalidated" || timingValue === "avoid" ? "var(--red)" : timingCaution ? "var(--amber)" : "var(--blue)";
-  const entryNotConfirmed = entrySignal && entrySignal.status !== "confirmed";
   const zoneStatus = zone.price_zone_status || entrySignal?.price_zone_status;
   const confirmationPassed = Boolean(zone.confirmation_passed || entrySignal?.confirmation_passed);
   const blockReason = zone.entry_block_reason || entrySignal?.entry_block_reason;
-  const signalStatus = zone.entry_signal_status || entrySignal?.status;
-  const signalAction = zone.entry_signal_action || entrySignal?.action;
-  const detailValue = (value, highlight = false, muted = false) => (
-    <span style={{
-      color: highlight ? "var(--green)" : muted ? "var(--muted)" : "var(--text)",
-      fontWeight: highlight ? 800 : 500,
-    }}>
-      {value}
-    </span>
-  );
-  const textBlock = (label, text, tone = "blue") => text ? (
-    <div style={{
-      marginTop: 10,
-      padding: "10px 12px",
-      borderRadius: 6,
-      background: tone === "amber" ? "rgba(251,176,36,0.08)" : "rgba(77,166,255,0.07)",
-      border: tone === "amber" ? "1px solid rgba(251,176,36,0.22)" : "1px solid rgba(77,166,255,0.18)",
-    }}>
-      <div style={{ fontSize: 10, color: "var(--muted)", textTransform: "uppercase", letterSpacing: .7, fontWeight: 800, marginBottom: 4 }}>{label}</div>
-      <div style={{ color: "var(--text2)", fontSize: 12, lineHeight: 1.55 }}>{text}</div>
-    </div>
-  ) : null;
+  const entryNotConfirmed = entrySignal && entrySignal.status !== "confirmed";
+  const highlight = value => <span style={{ color: "var(--green)", fontWeight: 800 }}>{value}</span>;
+  const zoneStatusColor = zoneStatus === "in_entry_zone" ? "var(--green)" : zoneStatus === "above_entry_zone" ? "var(--amber)" : "var(--muted)";
   return (
     <div style={{ marginTop: 12, padding: 12, borderRadius: 8, background: "rgba(77,166,255,0.06)", border: "1px solid rgba(77,166,255,0.20)" }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", flexWrap: "wrap", marginBottom: 10 }}>
         <div>
-          <div style={{ fontWeight: 800, marginBottom: 3 }}>Suggested Entry Zone</div>
+          <div style={{ fontWeight: 800, marginBottom: 3 }}>Entry Price Levels</div>
           <div style={{ color: "var(--muted)", fontSize: 11 }}>{description}</div>
         </div>
-        {action}
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+          {zone.confidence && (
+            <span className="badge" style={{ color: "var(--blue)", borderColor: "rgba(77,166,255,0.45)", background: "rgba(77,166,255,0.08)" }}>
+              Confidence {zone.confidence}
+            </span>
+          )}
+          {zoneStatus && (
+            <span className="badge" style={{ color: zoneStatusColor, borderColor: zoneStatusColor, background: "rgba(255,255,255,0.035)" }}>
+              {priceZoneLabel(zoneStatus)}
+            </span>
+          )}
+          {action}
+        </div>
       </div>
       {avoid ? (
         <div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
-            <span className="badge" style={decisionStatusStyle(zone.action_status || zone.entry_timing || "watch_only")}>
-              {zone.action_label || timingText || "No Suggested Entry Zone"}
-            </span>
-            <span className="badge" style={{ color: "var(--amber)", borderColor: "var(--amber)" }}>No Suggested Entry Zone</span>
+          <div style={{ padding: "9px 11px", borderRadius: 6, background: "rgba(251,176,36,0.07)", border: "1px solid rgba(251,176,36,0.22)", color: "var(--text2)", fontSize: 12, lineHeight: 1.5 }}>
+            No clean entry zone available. {zone.bot_suggestion || zone.entry_reason || "Setup not ready for a defined entry."}
           </div>
-          <div style={{ color: "var(--text2)", fontSize: 12, lineHeight: 1.5 }}>{zone.bot_suggestion || zone.entry_reason || "No suggested entry zone generated."}</div>
-          {zone.confirmation_note && (
-            <div style={{ marginTop: 8, color: "var(--muted)", fontSize: 12, lineHeight: 1.5 }}>{zone.confirmation_note}</div>
-          )}
           {(zone.risk_notes || []).length > 0 && (
             <ul style={{ marginTop: 8, paddingLeft: 18, color: "var(--muted)", fontSize: 12, lineHeight: 1.6 }}>
               {zone.risk_notes.map((note, i) => <li key={i}>{note}</li>)}
@@ -2301,54 +2373,27 @@ function SuggestedEntryZone({ zone, description = "Research-only entry zone from
         </div>
       ) : (
         <>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
-            <span className="badge" style={{ color: gradeColor, borderColor: gradeColor, background: "rgba(255,255,255,0.035)", fontSize: 12, minHeight: 26, padding: "3px 11px" }}>
-              Grade {zone.entry_grade || "—"}
-            </span>
-            <span className="badge" style={{ color: timingColor, borderColor: timingColor, background: "rgba(255,255,255,0.035)", fontSize: 12, minHeight: 26, padding: "3px 11px" }}>
-              {timingText}
-            </span>
-            <span className="badge" style={{ color: "var(--blue)", borderColor: "rgba(77,166,255,0.45)", background: "rgba(77,166,255,0.08)", fontSize: 12, minHeight: 26, padding: "3px 11px" }}>
-              Confidence {zone.confidence || "—"}
-            </span>
-          </div>
           <DetailGrid items={[
-            ["Entry Grade", detailValue(zone.entry_grade || "—")],
-            ["Entry Timing", detailValue(timingText)],
-            ["Trade Readiness", detailValue(compactStatus(zone.trade_readiness))],
-            ["Price Zone", detailValue(priceZoneLabel(zoneStatus))],
-            ["Distance to Entry", detailValue(zone.distance_to_entry_pct != null ? `${Number(zone.distance_to_entry_pct).toFixed(2)}%` : "-")],
-            ["Confirmation", detailValue(confirmationLabel(confirmationPassed))],
-            ["Signal Status", detailValue(compactStatus(signalStatus))],
-            ["Signal Action", detailValue(actionLabel(signalAction))],
-            ["Confidence", detailValue(zone.confidence || "—")],
-            ["Aggressive Entry", detailValue(fmtMoneyDash(zone.aggressive_entry), false, timingCaution)],
+            ["Preferred Entry", highlight(fmtMoneyDash(zone.preferred_entry))],
             ["Conservative Entry", fmtMoneyDash(zone.conservative_entry)],
-            ["Preferred Entry", detailValue(fmtMoneyDash(zone.preferred_entry), true)],
-            ["Ideal Stop", fmtMoneyDash(zone.ideal_stop)],
-            ["Target", fmtMoneyDash(zone.target)],
-            ["Aggressive R:R", fmtRRDash(zone.risk_reward_aggressive)],
-            ["Conservative R:R", fmtRRDash(zone.risk_reward_conservative)],
+            ["Aggressive Entry", fmtMoneyDash(zone.aggressive_entry)],
+            ["Ideal Stop", <span style={{ color: "var(--red)" }}>{fmtMoneyDash(zone.ideal_stop)}</span>],
+            ["Target (T1)", fmtMoneyDash(zone.target)],
+            ["R:R (Conservative)", fmtRRDash(zone.risk_reward_conservative)],
+            ["R:R (Aggressive)", fmtRRDash(zone.risk_reward_aggressive)],
+            ["Distance to Entry", zone.distance_to_entry_pct != null ? `${Number(zone.distance_to_entry_pct).toFixed(2)}%` : "-"],
+            ["1H Confirmation", confirmationLabel(confirmationPassed)],
           ]} />
-          {timingCaution && (
+          {entryNotConfirmed && blockReason && (
             <div style={{ marginTop: 10, padding: "9px 11px", borderRadius: 6, background: "rgba(251,176,36,0.08)", border: "1px solid rgba(251,176,36,0.22)", color: "var(--amber)", fontSize: 12, lineHeight: 1.5 }}>
-              {zone.aggressive_entry_note || "Aggressive entry has higher timing risk. Preferred entry is the conservative zone or a stronger confirmation trigger."}
+              {blockReason}
             </div>
           )}
-          {entryNotConfirmed && (
-            <div style={{ marginTop: 10, padding: "9px 11px", borderRadius: 6, background: "rgba(251,176,36,0.08)", border: "1px solid rgba(251,176,36,0.22)", color: "var(--amber)", fontSize: 12, lineHeight: 1.5 }}>
-              {blockReason || "Entry zone exists, but entry signal is not confirmed yet."}
+          {zone.bot_suggestion && (
+            <div style={{ marginTop: 10, padding: "9px 11px", borderRadius: 6, background: "rgba(77,166,255,0.07)", border: "1px solid rgba(77,166,255,0.18)", color: "var(--text2)", fontSize: 12, lineHeight: 1.55 }}>
+              {zone.bot_suggestion}
             </div>
           )}
-          {textBlock("Block Reason", blockReason, "amber")}
-          {zone.grade_adjustment_reason && (
-            <div style={{ marginTop: 10, padding: "9px 11px", borderRadius: 6, background: "rgba(77,166,255,0.07)", border: "1px solid rgba(77,166,255,0.18)", color: "var(--text2)", fontSize: 12, lineHeight: 1.5 }}>
-              {zone.grade_adjustment_reason}
-            </div>
-          )}
-          {textBlock("Bot Suggestion", zone.bot_suggestion, timingCaution ? "amber" : "blue")}
-          {textBlock("Confirmation Note", zone.confirmation_note, timingCaution ? "amber" : "blue")}
-          {textBlock("Entry Reason", zone.entry_reason)}
           {(zone.risk_notes || []).length > 0 && (
             <ul style={{ marginTop: 8, paddingLeft: 18, color: "var(--muted)", fontSize: 12, lineHeight: 1.6 }}>
               {zone.risk_notes.map((note, i) => <li key={i}>{note}</li>)}
@@ -2410,8 +2455,8 @@ function StructurePlanV2Preview({ plan, compact = false }) {
     <div style={{ marginTop: 12, padding: 12, borderRadius: 8, background: "rgba(163,247,191,0.045)", border: "1px solid rgba(163,247,191,0.18)" }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "flex-start", marginBottom: 10 }}>
         <div>
-          <div style={{ fontWeight: 800, marginBottom: 3 }}>Structure Plan V2 Preview</div>
-          <div style={{ color: "var(--muted)", fontSize: 11 }}>V2 structure plan is preview only. Alerts still use the current live rules unless later enabled.</div>
+          <div style={{ fontWeight: 800, marginBottom: 3 }}>Strategy Plan</div>
+          <div style={{ color: "var(--muted)", fontSize: 11 }}>Research-only. SwingAI never places orders. Review the plan manually before entering.</div>
         </div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           <span className="badge" style={{ color: actionColor, borderColor: actionColor }}>{action}</span>
@@ -2443,7 +2488,94 @@ function StructurePlanV2Preview({ plan, compact = false }) {
           {warnings.map((warning, i) => <li key={i}>{warning}</li>)}
         </ul>
       )}
-      <PositionSizingPreview sizing={p.v2_position_sizing_preview} title="V2 Position Sizing Preview" compact={compact} />
+      <PositionSizingPreview sizing={p.v2_position_sizing_preview} title="Position Sizing" compact={compact} />
+    </div>
+  );
+}
+
+function FinalActionCard({ summary, preview }) {
+  if (!summary) return null;
+  return (
+    <div style={{ padding: 12, borderRadius: 8, background: "rgba(255,255,255,0.024)", border: "1px solid var(--border2)", marginBottom: 10 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "flex-start", marginBottom: 10 }}>
+        <div>
+          <div style={{ fontWeight: 900, fontSize: 17, marginBottom: 4 }}>{summary.action_label || "Hold Carefully"}</div>
+          <div style={{ color: "var(--muted)", fontSize: 11 }}>Research and alert assistant only. No broker execution.</div>
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <span className="badge" style={positionActionStyle(summary)}>{summary.risk_level || "low"} risk</span>
+          {preview?.data_freshness && <span className="badge">{preview.data_freshness}</span>}
+        </div>
+      </div>
+      <DetailGrid items={[
+        ["Current Price", fmtMoneyDash(summary.current_price)],
+        ["Saved Stop", fmtMoneyDash(summary.saved_stop)],
+        ["Distance to Saved Stop", summary.distance_to_saved_stop_pct == null ? "-" : `${fmtPctDash(summary.distance_to_saved_stop_pct)} (${fmtMoneyDash(summary.distance_to_saved_stop_amount)})`],
+        ["Profit/Loss", fmtPctDash(summary.unrealized_gain_pct)],
+        ["Current R", summary.current_r || fmtRMultiple(summary.current_r_multiple)],
+      ]} />
+      <div style={{ marginTop: 10, color: "var(--text2)", fontSize: 12, lineHeight: 1.5 }}>{summary.explanation || "No summary available."}</div>
+      <div style={{ marginTop: 8, padding: "8px 10px", borderRadius: 6, background: "rgba(255,255,255,0.025)", border: "1px solid var(--border2)", color: "var(--text)", fontSize: 12, lineHeight: 1.45 }}>
+        <strong>Next step:</strong> {summary.next_step || "Review manually against the saved plan."}
+      </div>
+    </div>
+  );
+}
+
+function UnifiedActionCard({ analysis, mode = "entry" }) {
+  const ua = analysis?.unified_action;
+  if (!ua) return null;
+  const fa = String(ua.final_action || "").toLowerCase();
+  const isGreen = ["entry_ready"].includes(fa);
+  const isRed = ["invalidated", "avoid", "market_hostile", "high_exit_risk", "exit_stop_triggered"].includes(fa);
+  const isAmber = ["missed_first_entry", "too_extended", "data_stale", "reduce_exposure", "pullback_forming", "take_partial"].includes(fa);
+  const accentColor = isGreen ? "var(--green)" : isRed ? "var(--red)" : isAmber ? "var(--amber)" : "var(--blue)";
+  const accentBg = isGreen ? "rgba(34,197,94,0.06)" : isRed ? "rgba(255,77,77,0.06)" : isAmber ? "rgba(251,176,36,0.06)" : "rgba(77,166,255,0.06)";
+  const accentBorder = isGreen ? "rgba(34,197,94,0.22)" : isRed ? "rgba(255,77,77,0.22)" : isAmber ? "rgba(251,176,36,0.22)" : "rgba(77,166,255,0.22)";
+  const kl = ua.key_levels || {};
+  const why = ua.why_no_alert;
+  const riskStyle = {
+    critical: { color: "var(--red)", borderColor: "rgba(255,77,77,0.42)", background: "rgba(255,77,77,0.08)" },
+    high: { color: "var(--red)", borderColor: "rgba(255,77,77,0.42)", background: "rgba(255,77,77,0.08)" },
+    medium: { color: "var(--amber)", borderColor: "rgba(251,176,36,0.42)", background: "rgba(251,176,36,0.08)" },
+    low: { color: "var(--green)", borderColor: "rgba(34,197,94,0.42)", background: "rgba(34,197,94,0.08)" },
+  }[String(ua.risk_level || "low")] || { color: "var(--muted)", borderColor: "var(--border2)", background: "rgba(255,255,255,0.035)" };
+  return (
+    <div style={{ marginBottom: 14, padding: 14, borderRadius: 10, background: accentBg, border: `1px solid ${accentBorder}` }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "flex-start", marginBottom: 10 }}>
+        <div>
+          <div style={{ fontSize: 18, fontWeight: 900, color: accentColor, marginBottom: 3 }}>{ua.final_action_label || "Analyzing…"}</div>
+          <div style={{ color: "var(--muted)", fontSize: 11 }}>Research and alert assistant only — SwingAI never places orders.</div>
+        </div>
+        <span className="badge" style={riskStyle}>{String(ua.risk_level || "low")} risk</span>
+      </div>
+      <div style={{ color: "var(--text2)", fontSize: 13, lineHeight: 1.6, marginBottom: 10 }}>{ua.main_reason}</div>
+      <div style={{ padding: "9px 11px", borderRadius: 6, background: "rgba(255,255,255,0.03)", border: "1px solid var(--border2)", fontSize: 12, lineHeight: 1.45, color: "var(--text)" }}>
+        <strong>Next step:</strong> {ua.next_step}
+      </div>
+      {(kl.preferred_entry || kl.ideal_stop || kl.target_1 || kl.current_price) && (
+        <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {kl.current_price && <span className="tag" style={{ fontSize: 11 }}>Price {fmtMoneyDash(kl.current_price)}</span>}
+          {kl.preferred_entry && <span className="tag" style={{ fontSize: 11, color: "var(--green)", borderColor: "rgba(34,197,94,0.35)" }}>Entry ~{fmtMoneyDash(kl.preferred_entry)}</span>}
+          {kl.ideal_stop && <span className="tag" style={{ fontSize: 11, color: "var(--red)", borderColor: "rgba(255,77,77,0.35)" }}>Stop {fmtMoneyDash(kl.ideal_stop)}</span>}
+          {kl.target_1 && <span className="tag" style={{ fontSize: 11, color: "var(--green2)", borderColor: "rgba(163,247,191,0.35)" }}>T1 {fmtMoneyDash(kl.target_1)}</span>}
+          {kl.target_2 && <span className="tag" style={{ fontSize: 11, color: "var(--muted)" }}>T2 {fmtMoneyDash(kl.target_2)}</span>}
+          {kl.saved_stop && mode === "portfolio" && <span className="tag" style={{ fontSize: 11, color: "var(--red)", borderColor: "rgba(255,77,77,0.35)" }}>Saved Stop {fmtMoneyDash(kl.saved_stop)}</span>}
+        </div>
+      )}
+      {why && why.alert_status === "NO_ALERT" && mode === "entry" && (
+        <details style={{ marginTop: 10 }}>
+          <summary style={{ cursor: "pointer", fontSize: 12, color: "var(--muted)", fontWeight: 700 }}>Why no buy alert?</summary>
+          <div style={{ marginTop: 8, padding: "9px 11px", borderRadius: 6, background: "rgba(255,255,255,0.025)", border: "1px solid var(--border2)", fontSize: 12, lineHeight: 1.5 }}>
+            <div style={{ color: "var(--text2)", marginBottom: why.needed_for_alert?.length ? 8 : 0 }}>{why.alert_reason}</div>
+            {why.needed_for_alert?.length > 0 && (
+              <ul style={{ margin: 0, paddingLeft: 18, color: "var(--muted)", lineHeight: 1.6 }}>
+                {why.needed_for_alert.map((item, i) => <li key={i}>{item}</li>)}
+              </ul>
+            )}
+          </div>
+        </details>
+      )}
     </div>
   );
 }
@@ -2452,56 +2584,76 @@ function ExitManagerV2Preview({ preview, compact = false }) {
   if (!preview) return null;
   const warnings = preview.exit_warnings || [];
   const stale = preview.quote_is_stale || preview.price_stale || preview.data_freshness === "stale";
+  const summary = preview.position_action_summary;
   return (
     <div style={{ marginTop: compact ? 0 : 12, padding: 12, borderRadius: 8, background: "rgba(77,166,255,0.045)", border: "1px solid rgba(77,166,255,0.18)" }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", flexWrap: "wrap", marginBottom: 10 }}>
         <div>
-          <div style={{ fontWeight: 800, marginBottom: 3 }}>Exit Manager V2 Preview</div>
-          <div style={{ color: "var(--muted)", fontSize: 11 }}>Exit Manager V2 is preview only. It does not execute trades or change saved stops.</div>
+          <div style={{ fontWeight: 800, marginBottom: 3 }}>Exit Analysis</div>
+          <div style={{ color: "var(--muted)", fontSize: 11 }}>Research-only. Does not execute trades or change saved stops.</div>
         </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <span className="badge" style={exitV2Style(preview.exit_action)}>{preview.exit_action || "Data Limited"}</span>
-          <span className="badge" style={exitUrgencyStyle(preview.exit_urgency)}>{preview.exit_urgency || "Low"}</span>
-        </div>
+        {!summary && (
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <span className="badge" style={exitV2Style(preview.exit_action)}>{preview.exit_action || "Data Limited"}</span>
+            <span className="badge" style={exitUrgencyStyle(preview.exit_urgency)}>{preview.exit_urgency || "Low"}</span>
+          </div>
+        )}
       </div>
       {stale && (
         <div style={{ marginBottom: 10, padding: "8px 10px", borderRadius: 6, border: "1px solid rgba(251,176,36,0.35)", background: "rgba(251,176,36,0.08)", color: "var(--amber)", fontSize: 12, lineHeight: 1.45 }}>
-          Data Stale - confirm price before treating this as a sell warning.
+          Data stale - confirm price before treating this as an exit warning.
         </div>
       )}
-      <div style={{ color: "var(--text2)", fontSize: 12, lineHeight: 1.5, marginBottom: 10 }}>{preview.exit_reason || "No preview reason available."}</div>
-      <DetailGrid items={[
-        ["Current Price", fmtMoneyDash(preview.current_price)],
-        ["Quote Source", preview.quote_source || preview.price_source || "-"],
-        ["Quote Updated", preview.quote_updated_at ? formatQuoteTimeEt(preview.quote_updated_at) : "-"],
-        ["Freshness", preview.data_freshness || "-"],
-        ["Market Session", preview.market_session || "-"],
-        ["Stop Check Basis", preview.stop_check_basis || "-"],
-        ["Last Closed Candle", preview.last_closed_candle_time || "-"],
-        ["Warning Validity", preview.warning_validity_status || "-"],
-        ["Current R", fmtRMultiple(preview.current_r_multiple)],
-        ["Unrealized Gain", fmtPctDash(preview.unrealized_gain_pct)],
-        ["Distance to Stop", fmtPctDash(preview.distance_to_stop_pct)],
-        ["Distance to Target", fmtPctDash(preview.distance_to_target_pct)],
-        ["Partial Profit", preview.partial_profit_recommended ? "Yes" : "No"],
-        ["Suggested Partial", preview.suggested_partial_percent == null ? "-" : `${preview.suggested_partial_percent}%`],
-        ["Trail Stop", preview.trailing_stop_recommended ? "Yes" : "No"],
-        ["Recommended Stop", fmtMoneyDash(preview.recommended_stop)],
-        ["Stop Basis", preview.stop_basis || "-"],
-        ["Stop Raise", preview.stop_raise_amount == null ? "-" : `${fmtMoneyDash(preview.stop_raise_amount)} (${fmtPctDash(preview.stop_raise_pct)})`],
-        ["Let Winner Run", preview.let_winner_run ? "Yes" : "No"],
-        ["Reduce Exposure", preview.reduce_exposure_recommended ? "Yes" : "No"],
-        ["Trend", preview.trend_status || "-"],
-        ["Market", preview.market_exit_status || "-"],
-        ["Sector", preview.sector_exit_status || "-"],
-        ["Leadership", preview.leadership_exit_status || "-"],
-        ["Data Confidence", preview.data_confidence || "-"],
-      ]} />
-      {warnings.length > 0 && (
-        <ul style={{ marginTop: 10, paddingLeft: 18, color: preview.exit_urgency === "Critical" ? "var(--red)" : "var(--amber)", fontSize: 12, lineHeight: 1.6 }}>
-          {warnings.slice(0, 6).map((warning, i) => <li key={i}>{warning}</li>)}
-        </ul>
-      )}
+      <FinalActionCard summary={summary} preview={preview} />
+      <details open style={{ marginTop: 10 }}>
+        <summary style={{ cursor: "pointer", fontWeight: 800, fontSize: 12 }}>Why?</summary>
+        <div style={{ color: "var(--text2)", fontSize: 12, lineHeight: 1.5, marginTop: 8 }}>{preview.exit_reason || summary?.explanation || "No preview reason available."}</div>
+        {warnings.length > 0 && (
+          <ul style={{ marginTop: 8, paddingLeft: 18, color: preview.exit_urgency === "Critical" ? "var(--red)" : "var(--amber)", fontSize: 12, lineHeight: 1.6 }}>
+            {warnings.slice(0, 5).map((warning, i) => <li key={i}>{warning}</li>)}
+          </ul>
+        )}
+      </details>
+      <details style={{ marginTop: 10 }}>
+        <summary style={{ cursor: "pointer", fontWeight: 800, fontSize: 12 }}>Technical Details</summary>
+        <div style={{ marginTop: 8 }}>
+          <DetailGrid items={[
+            ["Current Price", fmtMoneyDash(preview.current_price)],
+            ["Saved Stop", fmtMoneyDash(summary?.saved_stop ?? preview.comparison_to_current_plan?.saved_stop_loss)],
+            ["Current R", fmtRMultiple(preview.current_r_multiple)],
+            ["Unrealized Gain", fmtPctDash(preview.unrealized_gain_pct)],
+            ["Distance to Saved Stop", fmtPctDash(summary?.distance_to_saved_stop_pct ?? preview.distance_to_stop_pct)],
+            ["Distance to Target", summary?.show_live_target_as_secondary ? fmtPctDash(preview.distance_to_target_pct) : "Secondary"],
+            ["Partial Profit", preview.partial_profit_recommended ? "Yes" : "No"],
+            ["Suggested Partial", preview.suggested_partial_percent == null ? "-" : `${preview.suggested_partial_percent}%`],
+            ["Trail Stop", preview.trailing_stop_recommended ? "Yes" : "No"],
+            ["Recommended Stop", fmtMoneyDash(preview.recommended_stop)],
+            ["Stop Basis", preview.stop_basis || "-"],
+            ["Trend", preview.trend_status || "-"],
+            ["Momentum", preview.metadata?.context?.macd_hist == null ? "-" : `MACD hist ${Number(preview.metadata.context.macd_hist).toFixed(3)}`],
+            ["Market", preview.market_exit_status || "-"],
+            ["Sector", preview.sector_exit_status || "-"],
+            ["Leadership", preview.leadership_exit_status || "-"],
+          ]} />
+        </div>
+      </details>
+      <details style={{ marginTop: 10 }}>
+        <summary style={{ cursor: "pointer", fontWeight: 800, fontSize: 12 }}>Raw Diagnostics</summary>
+        <div style={{ marginTop: 8 }}>
+          <DetailGrid items={[
+            ["Raw Exit Action", preview.raw_exit_action || preview.exit_action || "-"],
+            ["Raw Urgency", preview.raw_exit_urgency || preview.exit_urgency || "-"],
+            ["Quote Source", preview.quote_source || preview.price_source || "-"],
+            ["Quote Updated", preview.quote_updated_at ? formatQuoteTimeEt(preview.quote_updated_at) : "-"],
+            ["Freshness", preview.data_freshness || "-"],
+            ["Market Session", preview.market_session || "-"],
+            ["Stop Check Basis", preview.stop_check_basis || "-"],
+            ["Last Closed Candle", preview.last_closed_candle_time || "-"],
+            ["Warning Validity", preview.warning_validity_status || "-"],
+            ["Data Confidence", preview.data_confidence || "-"],
+          ]} />
+        </div>
+      </details>
     </div>
   );
 }
@@ -2510,11 +2662,26 @@ function PortfolioLiveAnalysisPanel({ data, error }) {
   if (!data) return null;
   const plan = data.position_plan || {};
   const live = data.live_analysis || {};
+  const summary = live.position_action_summary || live.portfolio_exit_v2?.position_action_summary;
+  const showLiveTarget = summary?.show_live_target_as_secondary !== false;
   return (
     <div style={{ display: "grid", gap: 12 }}>
-      <div style={{ padding: 12, borderRadius: 8, background: "rgba(255,255,255,0.018)", border: "1px solid var(--border2)" }}>
-        <div style={{ fontWeight: 800, marginBottom: 3 }}>Position Plan</div>
-        <div style={{ color: "var(--muted)", fontSize: 11, marginBottom: 10 }}>Original saved trade plan. This is not changed by Live Analysis.</div>
+      <ExitManagerV2Preview preview={live.portfolio_exit_v2} />
+      <details open style={{ padding: 12, borderRadius: 8, background: "rgba(255,255,255,0.018)", border: "1px solid var(--border2)" }}>
+        <summary style={{ cursor: "pointer", fontWeight: 800 }}>Decision Summary</summary>
+        <div style={{ marginTop: 10 }}>
+          <DetailGrid items={[
+            ["Saved Entry", fmtMoney(plan.entry_price)],
+            ["Saved Stop", fmtMoney(plan.stop_loss)],
+            ["Current Price", fmtMoney(summary?.current_price ?? live.current_price)],
+            ["Profit/Loss", fmtPctDash(summary?.unrealized_gain_pct)],
+            ["Current R", summary?.current_r || fmtRMultiple(summary?.current_r_multiple)],
+          ]} />
+        </div>
+      </details>
+      <details style={{ padding: 12, borderRadius: 8, background: "rgba(255,255,255,0.018)", border: "1px solid var(--border2)" }}>
+        <summary style={{ cursor: "pointer", fontWeight: 800 }}>Position Plan</summary>
+        <div style={{ color: "var(--muted)", fontSize: 11, margin: "8px 0 10px" }}>Original saved trade plan. This is not changed by Live Analysis.</div>
         <DetailGrid items={[
           ["Entry", fmtMoney(plan.entry_price)],
           ["Target", fmtMoney(plan.target_price)],
@@ -2523,39 +2690,41 @@ function PortfolioLiveAnalysisPanel({ data, error }) {
           ["Setup at Entry", plan.setup_at_entry || "-"],
           ["R:R at Entry", fmtRR(plan.risk_reward_at_entry)],
         ]} />
-      </div>
-      <div style={{ padding: 12, borderRadius: 8, background: "rgba(0,255,178,0.035)", border: "1px solid rgba(0,255,178,0.16)" }}>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 3 }}>
+      </details>
+      <details style={{ padding: 12, borderRadius: 8, background: "rgba(0,255,178,0.035)", border: "1px solid rgba(0,255,178,0.16)" }}>
+        <summary style={{ cursor: "pointer", fontWeight: 800 }}>Technical Details</summary>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginTop: 8, marginBottom: 3 }}>
           <div style={{ fontWeight: 800 }}>Live Analysis</div>
-          <AnalysisMetaBadges analysis={live} />
+          {!live.suppress_entry_confirmation_badge && <AnalysisMetaBadges analysis={live} />}
         </div>
-        <div style={{ color: "var(--muted)", fontSize: 11, marginBottom: 10 }}>Current market analysis. This does not overwrite your saved Position Plan.</div>
+        <div style={{ color: "var(--muted)", fontSize: 11, marginBottom: 10 }}>Current market analysis. Entry labels are secondary for existing positions.</div>
         {live.status === "failed" && <div className="err-box">Live analysis failed. {(live.live_reasons || []).join(" ")}</div>}
         <DetailGrid items={[
           ["Current Price", fmtMoney(live.current_price)],
           ["Live Score", live.live_score ?? "-"],
           ["Live Setup", live.live_setup || "-"],
-          ["Live Target", fmtMoney(live.live_target)],
-          ["Live Stop", fmtMoney(live.live_stop)],
-          ["Live R:R", fmtRR(live.live_risk_reward)],
           ["Live Signal", live.live_signal || "-"],
+          ["Live Target", showLiveTarget ? fmtMoney(live.live_target) : "Secondary - avoid signal"],
+          ["Live Stop", "Secondary - saved stop is primary"],
+          ["Live R:R", showLiveTarget ? fmtRR(live.live_risk_reward) : "Secondary"],
           ["Analysis Time", formatLocalDateTime(live.analysis_time)],
         ]} />
         {(live.live_reasons || []).length > 0 && (
           <div className="signals-list" style={{ marginTop: 10 }}>
-            {live.live_reasons.slice(0, 8).map((reason, i) => <span key={i} className="signal-pill">{reason}</span>)}
+            {live.live_reasons.slice(0, 6).map((reason, i) => <span key={i} className="signal-pill">{reason}</span>)}
           </div>
         )}
+      </details>
+      <details style={{ padding: 12, borderRadius: 8, background: "rgba(255,255,255,0.018)", border: "1px solid var(--border2)" }}>
+        <summary style={{ cursor: "pointer", fontWeight: 800 }}>Raw Diagnostics</summary>
         <SuggestedEntryZone zone={live.suggested_entry_zone} entrySignal={live.entry_signal} />
         <PositionSizingPreview sizing={live.position_sizing_preview} heat={live.portfolio_heat_preview} />
-        <ExitManagerV2Preview preview={live.portfolio_exit_v2} />
         <StructurePlanV2Preview plan={live.entry_plan_v2 || live.entry_plan_v2_json} />
         <DecisionLayerSections analysis={live} />
-      </div>
+      </details>
     </div>
   );
 }
-
 function PortfolioPage({ positions, onRefresh }) {
   const [showAdd, setShowAdd] = useState(false);
   const [editPos, setEditPos] = useState(null);
@@ -2792,8 +2961,8 @@ function PortfolioPage({ positions, onRefresh }) {
       <div className="card" style={{ marginBottom: 14 }}>
         <div className="card-head">
           <div>
-            <div className="card-title">Exit Manager V2 Preview</div>
-            <div className="card-sub">Exit Manager V2 is preview only. It does not execute trades or change saved stops.</div>
+            <div className="card-title">Exit Analysis</div>
+            <div className="card-sub">Research-only. Does not execute trades or change saved stops.</div>
           </div>
         </div>
         {open.length === 0 ? (
@@ -2895,6 +3064,7 @@ function PortfolioPage({ positions, onRefresh }) {
                 </div>
               )}
             </div>
+            <UnifiedActionCard analysis={singleScan} mode="entry" />
             <SuggestedEntryZone zone={singleScan.suggested_entry_zone} entrySignal={singleScan.entry_signal} />
             <PositionSizingPreview sizing={singleScan.position_sizing_preview} heat={singleScan.portfolio_heat_preview} />
             <StructurePlanV2Preview plan={singleScan.entry_plan_v2 || singleScan.entry_plan_v2_json} />
@@ -3252,7 +3422,7 @@ function AlertsPage() {
   return (
     <div className="fade-up">
       <PageBrief title="Alerts">
-        Alerts are reminders for manual review. V1 remains the default behavior, V2 modes are experimental, and SwingAI never executes orders.
+        Alerts are reminders for manual review. SwingAI never executes orders — all trades are reviewed and placed manually by you.
       </PageBrief>
       <div className="grid-2" style={{ gap: 12, marginBottom: 14 }}>
         <div className="card">
@@ -3286,8 +3456,8 @@ function AlertsPage() {
       <div className="card" style={{ marginBottom: 14 }}>
         <div className="card-head">
           <div>
-            <div className="card-title">V1 vs V2 Alert Engine</div>
-            <div className="card-sub">V2 alert modes are experimental. Shadow mode does not notify or trade.</div>
+            <div className="card-title">Alert Engine</div>
+            <div className="card-sub">Shadow mode does not notify or place trades.</div>
           </div>
         </div>
         <div className="grid-4" style={{ marginTop: 12 }}>
@@ -3494,95 +3664,73 @@ function EntryWatchlistPage() {
       ) : (
         <div className="card" style={{ padding: 0 }}>
           <div className="table-wrap">
-            <table style={{ minWidth: 2180 }}>
+            <table style={{ minWidth: 1240 }}>
               <thead>
                 <tr>
-                  <th>Ticker</th><th>Status</th><th>Action</th><th>Market</th><th>Leadership</th><th>Sector</th><th>Setup</th><th>Score</th><th>Live Current Price</th><th>Saved Preferred Entry / Watch Price</th><th>Saved Aggressive Entry</th><th>Saved Conservative Entry</th><th>Saved Target</th><th>Saved Stop</th><th>Source</th><th>Quote Time</th><th>Price in Entry Zone</th><th>Distance to Entry</th><th>Confirmation</th><th>Block Reason</th><th>Entry Timing</th><th>Signal Status</th><th>Signal Action</th><th>Trigger Conditions</th><th>Missing Conditions</th><th>Invalidation</th><th>Reason</th><th>Last Checked</th><th>Auto Monitor</th><th>Expires</th><th>Actions</th>
+                  <th>Ticker</th><th>Status</th><th>Action / Timing</th><th>Context</th><th>Setup</th><th>Live Price</th><th>Entry Zone</th><th>Target</th><th>In Zone</th><th>Why No Alert</th><th>Last Checked</th><th>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {watches.map(w => {
                   const status = w.status || "waiting_for_1h_confirmation";
                   const confirmed = status === "entry_confirmed" || w.entry_signal_status === "confirmed";
-                  const quoteTime = formatQuoteTimeEt(w.selected_price_timestamp);
+                  const timing = normalizedWatchEntryTiming(w);
+                  const whyNoAlert = w.missing_conditions?.length
+                    ? `Needs: ${[...(w.missing_conditions || [])].slice(0, 2).join("; ")}`
+                    : w.entry_block_reason || w.entry_signal_reason || "-";
                   return (
                     <tr key={w.id || `${w.ticker}-${w.created_at}`}>
                       <td style={{ fontWeight: 800, fontSize: 13 }}>{String(w.ticker || "").toUpperCase()}</td>
-                      <td><span className="badge" style={entryStatusStyle(status)}>{ENTRY_STATUS_LABELS[status] || status || "-"}</span></td>
-                      <td><ActionStatusBadge analysis={w} /></td>
-                      <td><MarketRegimeBadge analysis={w} /></td>
-                      <td><LeadershipBadge analysis={w} /></td>
-                      <td><SectorStrengthBadge analysis={w} /></td>
+                      <td><span className="badge" style={entryStatusStyle(status)}>{ENTRY_STATUS_LABELS[status] || compactStatus(status)}</span></td>
                       <td>
-                        {w.setup || "-"}
-                        {w.suggested_shares != null && (
-                          <div style={{ marginTop: 5 }}>
-                            <span className="tag" style={{ fontSize: 10, color: "var(--blue)", borderColor: "rgba(77,166,255,0.32)" }}>
-                              Size {w.suggested_shares} sh - {w.sizing_status || "Preview"}
-                            </span>
-                          </div>
-                        )}
+                        <span className="badge" style={decisionStatusStyle(timing)}>{timingLabel(timing)}</span>
                         {(w.entry_plan_v2_json || w.v2_entry_plan_type) && (
-                          <div style={{ marginTop: 5 }}>
+                          <div style={{ marginTop: 4 }}>
                             <span className="tag" style={{ fontSize: 10, color: "var(--green2)", borderColor: "rgba(163,247,191,0.32)" }}>
-                              V2 {w.v2_plan_quality || "Preview"} · {w.v2_action_status || w.v2_entry_plan_type}
+                              {w.v2_plan_quality || "Watch"} · {normalizeActionLabel(w.v2_action_status || w.v2_entry_plan_type || "watch_only")}
                             </span>
                           </div>
                         )}
                       </td>
-                      <td>{w.score ?? w.confidence ?? "-"}</td>
                       <td>
-                        {fmtMoney(w.current_price)}
-                        <div style={{ marginTop: 3, fontSize: 10, color: w.price_stale ? "var(--amber)" : "var(--muted)", lineHeight: 1.3 }}>
-                          {w.price_source || "saved price"}{w.price_stale ? " · stale" : ""}
+                        <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                          <MarketRegimeBadge analysis={w} />
+                          <LeadershipBadge analysis={w} />
                         </div>
-                        {w.stale_reason && <div style={{ marginTop: 2, fontSize: 10, color: "var(--amber)", lineHeight: 1.3 }}>{w.stale_reason}</div>}
-                        {w.price_stale && (
-                          <div className="badge" style={{ marginTop: 5, color: "var(--amber)", borderColor: "rgba(251,176,36,0.35)", background: "rgba(251,176,36,0.08)" }}>
-                            Price may be stale
+                        <div style={{ marginTop: 4 }}><SectorStrengthBadge analysis={w} /></div>
+                      </td>
+                      <td>
+                        <div style={{ fontWeight: 600 }}>{w.setup || "-"}</div>
+                        <div style={{ marginTop: 3, fontSize: 11, color: "var(--muted)" }}>Score {w.score ?? w.confidence ?? "-"}</div>
+                        {w.suggested_shares != null && (
+                          <div style={{ marginTop: 4 }}>
+                            <span className="tag" style={{ fontSize: 10, color: "var(--blue)", borderColor: "rgba(77,166,255,0.32)" }}>
+                              {w.suggested_shares} sh
+                            </span>
                           </div>
                         )}
                       </td>
-                      <td style={{ color: "var(--green)" }}>
-                        {fmtMoney(w.preferred_entry ?? w.conservative_entry)}
-                        <div style={{ marginTop: 3, fontSize: 10, color: "var(--muted)", lineHeight: 1.3 }}>
-                          Frozen plan · Watch Price: {fmtMoney(w.watch_price)}
+                      <td>
+                        <div style={{ fontWeight: 600 }}>{fmtMoney(w.current_price)}</div>
+                        <div style={{ marginTop: 2, fontSize: 10, color: w.price_stale ? "var(--amber)" : "var(--muted)", lineHeight: 1.3 }}>
+                          {w.price_stale ? "⚠ Stale" : (w.price_source || "saved")}
                         </div>
                       </td>
-                      <td>{fmtMoney(w.aggressive_entry)}</td>
-                      <td>{fmtMoney(w.conservative_entry)}</td>
-                      <td>{fmtMoney(w.target)}</td>
-                      <td style={{ color: "var(--red)" }}>{fmtMoney(w.ideal_stop)}</td>
                       <td>
-                        <div>{w.price_source || "-"}</div>
-                        {w.selected_price_source && (
-                          <div style={{ marginTop: 3, fontSize: 10, color: "var(--muted)", lineHeight: 1.3 }}>{w.selected_price_source}</div>
-                        )}
+                        <div style={{ color: "var(--green)", fontWeight: 600 }}>{fmtMoney(w.preferred_entry ?? w.conservative_entry)}</div>
+                        <div style={{ marginTop: 2, fontSize: 11, color: "var(--red)" }}>Stop {fmtMoney(w.ideal_stop)}</div>
                       </td>
-                      <td>{quoteTime}</td>
+                      <td style={{ color: "var(--green2)" }}>{fmtMoney(w.target)}</td>
                       <td>
                         <span className="badge" style={{ color: w.price_in_entry_zone ? "var(--green)" : "var(--amber)", borderColor: w.price_in_entry_zone ? "rgba(34,197,94,0.35)" : "rgba(251,176,36,0.35)", background: w.price_in_entry_zone ? "rgba(34,197,94,0.08)" : "rgba(251,176,36,0.08)" }}>
                           {w.price_in_entry_zone ? "Yes" : "No"}
                         </span>
+                        {w.distance_to_entry_pct != null && (
+                          <div style={{ marginTop: 3, fontSize: 10, color: "var(--muted)" }}>{Number(w.distance_to_entry_pct).toFixed(1)}% away</div>
+                        )}
                       </td>
-                      <td>{w.distance_to_entry_pct != null ? `${Number(w.distance_to_entry_pct).toFixed(2)}%` : "-"}</td>
-                      <td>{confirmationLabel(w.entry_signal_status === "confirmed" || w.entry_confirmation_summary?.confirmation_passed)}</td>
-                      <td style={{ whiteSpace: "normal", minWidth: 220, lineHeight: 1.45 }}>{w.entry_block_reason || "-"}</td>
-                      <td>{timingLabel(normalizedWatchEntryTiming(w))}</td>
-                      <td>{w.entry_signal_status || "-"}</td>
-                      <td style={{ color: confirmed ? "var(--green)" : "var(--text2)" }}>{actionLabel(w.entry_signal_action) || ENTRY_ACTION_LABELS[w.entry_signal_action] || w.entry_signal_action || "-"}</td>
-                      <td><ConditionList items={w.trigger_conditions} /></td>
-                      <td><ConditionList items={w.missing_conditions} /></td>
-                      <td><ConditionList items={w.invalidation_conditions} /></td>
-                      <td style={{ whiteSpace: "normal", minWidth: 220, lineHeight: 1.45 }}>{w.entry_signal_reason || "-"}</td>
-                      <td>{fmtDateTime(w.last_checked_at || w.updated_at)}</td>
-                      <td>
-                        <span className="badge" style={{ color: "var(--green)", borderColor: "rgba(34,197,94,0.35)", background: "rgba(34,197,94,0.08)" }}>Active</span>
-                        <div style={{ marginTop: 4, fontSize: 10, color: "var(--muted)", lineHeight: 1.3 }}>
-                          Plan: {String(w.plan_mode || "frozen").replace(/_/g, " ")}
-                        </div>
-                      </td>
-                      <td>{fmtDateTime(w.expires_at)}</td>
+                      <td style={{ whiteSpace: "normal", minWidth: 200, lineHeight: 1.45, fontSize: 11, color: "var(--text2)" }}>{whyNoAlert}</td>
+                      <td style={{ fontSize: 11, color: "var(--muted)" }}>{fmtDateTime(w.last_checked_at || w.updated_at)}</td>
                       <td>
                         <button className="btn btn-red" style={{ padding: "4px 8px", fontSize: 10 }} onClick={() => cancelWatch(w)} disabled={busyId === w.id || ["cancelled", "expired", "invalidated"].includes(status)}>
                           {busyId === w.id ? "Cancelling..." : "Cancel"}
@@ -3607,32 +3755,86 @@ function LeadershipBoardPage() {
   const [error, setError] = useState("");
   const [sector, setSector] = useState("");
   const [label, setLabel] = useState("");
-  const [hideLaggards, setHideLaggards] = useState(true);
-  const [limit, setLimit] = useState("50");
+  const [showAllScanned, setShowAllScanned] = useState(false);
+  const [minLeadershipScore, setMinLeadershipScore] = useState("60");
+  const [quickFilter, setQuickFilter] = useState("");
+  const [limit, setLimit] = useState("200");
 
   const loadBoard = useCallback(async (opts = {}) => {
     setError("");
     if (opts.refresh) setRefreshing(true); else setLoading(true);
     const params = new URLSearchParams({
-      limit: limit || "50",
-      include_laggards: hideLaggards ? "false" : "true",
+      limit: limit || "200",
+      include_laggards: "true",
     });
-    if (sector) params.set("sector", sector);
-    if (label) params.set("label", label);
     if (opts.forceRefresh) params.set("force_refresh", "true");
     const { data, error: err } = opts.post
-      ? await api(`/api/leadership-board/refresh?limit=${encodeURIComponent(limit || "50")}`, { method: "POST" })
+      ? await api(`/api/leadership-board/refresh?limit=${encodeURIComponent(limit || "200")}`, { method: "POST" })
       : await api(`/api/leadership-board?${params.toString()}`);
     if (err) setError(err);
     else setBoard(data);
     setLoading(false);
     setRefreshing(false);
-  }, [sector, label, hideLaggards, limit]);
+  }, [limit]);
 
   useEffect(() => { loadBoard(); }, [loadBoard]);
 
-  const rows = board?.ranked || [];
-  const sectors = Array.from(new Set(rows.map(r => r.sector_name).filter(Boolean))).sort();
+  const allRows = board?.ranked || [];
+  const minScoreNumber = minLeadershipScore === "" ? null : Number(minLeadershipScore);
+  const visibleLeadershipLabels = ["Top Leader", "Strong Leader", "Emerging Leader", "Constructive Watch", "Laggard", "Excluded"];
+  const strongSectorLabels = new Set(["Leading", "Strong"]);
+  const rows = allRows.filter(r => {
+    const rowLabel = r.leadership_rank_label || "";
+    const score = Number(r.leadership_ranking_score);
+    const sectorScore = Number(r.sector_strength_score);
+    if (!showAllScanned && ["Excluded", "Laggard"].includes(rowLabel)) return false;
+    if (sector && String(r.sector_name || "") !== sector) return false;
+    if (label && rowLabel !== label) return false;
+    if (Number.isFinite(minScoreNumber) && (!Number.isFinite(score) || score < minScoreNumber)) return false;
+    if (quickFilter === "leaders" && !["Top Leader", "Strong Leader", "Emerging Leader"].includes(rowLabel)) return false;
+    if (quickFilter === "watch" && !["Emerging Leader", "Constructive Watch"].includes(rowLabel)) return false;
+    if (quickFilter === "strong_sectors" && !strongSectorLabels.has(r.sector_strength_label) && !(Number.isFinite(sectorScore) && sectorScore >= 62)) return false;
+    return true;
+  });
+  const sectors = Array.from(new Set(allRows.map(r => r.sector_name).filter(Boolean))).sort();
+  const applyQuickFilter = preset => {
+    setQuickFilter(preset);
+    if (preset === "leaders") {
+      setShowAllScanned(false);
+      setMinLeadershipScore("72");
+      setLabel("");
+    } else if (preset === "watch") {
+      setShowAllScanned(false);
+      setMinLeadershipScore("45");
+      setLabel("");
+    } else if (preset === "excluded") {
+      setShowAllScanned(true);
+      setMinLeadershipScore("");
+      setLabel("Excluded");
+    } else if (preset === "strong_sectors") {
+      setShowAllScanned(false);
+      setMinLeadershipScore("60");
+      setLabel("");
+    }
+  };
+  const handleLeadershipLabelChange = value => {
+    setLabel(value);
+    setQuickFilter("");
+    if (["Laggard", "Excluded"].includes(value)) {
+      setShowAllScanned(true);
+      setMinLeadershipScore("");
+    }
+  };
+  const handleShowAllScannedChange = checked => {
+    setShowAllScanned(checked);
+    setQuickFilter("");
+    if (checked) {
+      setMinLeadershipScore("");
+      setLabel("");
+    } else {
+      setMinLeadershipScore("60");
+    }
+  };
   return (
     <div>
       <PageBrief title="Leadership Board">
@@ -3644,6 +3846,7 @@ function LeadershipBoardPage() {
             <div className="card-title">Leadership Board</div>
             <div style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.5 }}>
               Leadership Board ranks relative strength and sector leadership. It does not mean immediate buy. Use Entry Ready / Wait for Confirmation for timing.
+              Excluded means the ticker was scanned but failed leadership qualification.
             </div>
           </div>
           <button className="btn btn-blue" onClick={() => loadBoard({ post: true, refresh: true })} disabled={refreshing}>
@@ -3661,30 +3864,41 @@ function LeadershipBoardPage() {
             </select>
           </div>
           <div>
+            <label>Min Leadership Score</label>
+            <input className="input" type="number" min="0" max="100" step="1" value={minLeadershipScore} onChange={e => { setMinLeadershipScore(e.target.value); setQuickFilter(""); }} style={{ minWidth: 160 }} />
+          </div>
+          <div>
             <label>Sector</label>
-            <select className="input" value={sector} onChange={e => setSector(e.target.value)} style={{ minWidth: 180 }}>
+            <select className="input" value={sector} onChange={e => { setSector(e.target.value); setQuickFilter(""); }} style={{ minWidth: 180 }}>
               <option value="">All sectors</option>
               {sectors.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
           <div>
             <label>Leadership Label</label>
-            <select className="input" value={label} onChange={e => setLabel(e.target.value)} style={{ minWidth: 190 }}>
+            <select className="input" value={label} onChange={e => handleLeadershipLabelChange(e.target.value)} style={{ minWidth: 190 }}>
               <option value="">All labels</option>
-              {["Top Leader", "Strong Leader", "Emerging Leader", "Constructive Watch", "Neutral", "Laggard", "Excluded"].map(x => <option key={x} value={x}>{x}</option>)}
+              {visibleLeadershipLabels.map(x => <option key={x} value={x}>{x}</option>)}
             </select>
           </div>
           <label style={{ display: "inline-flex", gap: 8, alignItems: "center", color: "var(--text2)", fontSize: 12, marginBottom: 10 }}>
-            <input type="checkbox" checked={hideLaggards} onChange={e => setHideLaggards(e.target.checked)} />
-            Hide laggards
+            <input type="checkbox" checked={showAllScanned} onChange={e => handleShowAllScannedChange(e.target.checked)} />
+            Show All Scanned
           </label>
           <button className="btn btn-ghost" onClick={() => loadBoard()} disabled={loading || refreshing}>Apply</button>
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+          <button className="btn btn-ghost" onClick={() => applyQuickFilter("leaders")}>Leaders Only</button>
+          <button className="btn btn-ghost" onClick={() => applyQuickFilter("watch")}>Watch Candidates</button>
+          <button className="btn btn-ghost" onClick={() => applyQuickFilter("excluded")}>Show Excluded</button>
+          <button className="btn btn-ghost" onClick={() => applyQuickFilter("strong_sectors")}>Strong Sectors Only</button>
         </div>
         {board && (
           <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap", fontSize: 11, color: "var(--muted)" }}>
             <span>Updated: {fmtDateTime(board.created_at)}</span>
             <span>Universe: {board.universe_source || "-"}</span>
-            <span>Count: {board.count ?? rows.length}</span>
+            <span>Showing: {rows.length}</span>
+            <span>Scanned: {board.count ?? allRows.length}</span>
             {board.provider_warning && <span style={{ color: "var(--amber)" }}>{board.provider_warning}</span>}
           </div>
         )}
@@ -3714,9 +3928,9 @@ function LeadershipBoardPage() {
                     <td>{r.leadership_trend || "-"}</td>
                     <td>{sectorMappingMissing(r) ? "Sector mapping missing" : (r.sector_name || "-")}</td>
                     <td><SectorStrengthBadge analysis={r} /></td>
-                    <td>{fmtPctSigned(r.rs_1m_vs_spy)}</td>
-                    <td>{fmtPctSigned(r.rs_3m_vs_spy)}</td>
-                    <td>{fmtPctSigned(r.rs_3m_vs_sector)}</td>
+                    <td>{rsCellValue(r, "rs_1m_vs_spy")}</td>
+                    <td>{rsCellValue(r, "rs_3m_vs_spy")}</td>
+                    <td>{rsCellValue(r, "rs_3m_vs_sector")}</td>
                     <td>{r.technical_score ?? "-"}</td>
                     <td><ActionStatusBadge analysis={r} /></td>
                     <td>{r.volume_confidence || "-"}</td>
