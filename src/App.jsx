@@ -2268,6 +2268,12 @@ function QuickMomentumPanel({ analysis }) {
       <div style={{ marginTop: 8, padding: "8px 10px", borderRadius: 6, background: "rgba(255,255,255,0.025)", border: "1px solid var(--border2)", color: "var(--text)", fontSize: 12, lineHeight: 1.45 }}>
         <strong>Next step:</strong> {final.next_step || "Watch for confirmation. No order is placed."}
       </div>
+      {(quick.data_scale_mismatch || quick.intraday_levels_reliable === false) && (
+        <div style={{ marginTop: 10, padding: "9px 11px", borderRadius: 6, background: "rgba(255,77,77,0.06)", border: "1px solid rgba(255,77,77,0.25)", color: "var(--red)", fontSize: 12, lineHeight: 1.45 }}>
+          Reference levels hidden due to data mismatch.
+          {quick.data_scale_mismatch && data.scale_gap_pct != null && ` (15m candle vs quote gap: ${data.scale_gap_pct.toFixed(1)}%)`}
+        </div>
+      )}
       <details style={{ marginTop: 10 }}>
         <summary style={{ cursor: "pointer", fontWeight: 800, fontSize: 12 }}>Data Confidence</summary>
         <div style={{ marginTop: 8 }}>
@@ -2279,6 +2285,8 @@ function QuickMomentumPanel({ analysis }) {
             ["Candle Updated", data.candle_updated_at || "-"],
             ["Volume Confidence", data.volume_confidence || "-"],
             ["Invalid Timestamp", data.invalid_timestamp ? "Yes" : "No"],
+            ["Intraday Reliable", quick.intraday_levels_reliable == null ? "-" : quick.intraday_levels_reliable ? "Yes" : "No"],
+            ["Scale Mismatch", quick.data_scale_mismatch ? `Yes (${data.scale_gap_pct != null ? data.scale_gap_pct.toFixed(1) + "%" : "gap detected"})` : "No"],
           ]} />
         </div>
       </details>
