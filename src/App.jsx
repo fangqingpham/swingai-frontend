@@ -1369,6 +1369,7 @@ function SingleTickerCheck({ guest = false }) {
   const formatMoney = value => value == null || value === "" ? "-" : `$${Number(value).toFixed(2)}`;
   const formatNumber = value => value == null || value === "" ? "-" : Number(value).toFixed(2);
   const suggestedZone = result?.suggested_entry_zone;
+  const showDebugPlans = Boolean(result?.debug_v1_v2);
   const quoteTimestamp = result?.selected_price_timestamp ?? result?.quote?.selected_price_timestamp;
   const quoteTime = formatQuoteTimeEt(quoteTimestamp);
   const priceStale = Boolean(result?.price_stale ?? result?.quote?.price_stale);
@@ -1473,7 +1474,7 @@ function SingleTickerCheck({ guest = false }) {
             </div>
           )}
           {!guest && <UnifiedActionCard analysis={result} mode="entry" />}
-          {canShowSuggestedZone && (
+          {showDebugPlans && canShowSuggestedZone && (
             <SuggestedEntryZone
               zone={suggestedZone}
               description="Research-only entry zone from this ticker check."
@@ -1481,8 +1482,8 @@ function SingleTickerCheck({ guest = false }) {
               entrySignal={result.entry_signal}
             />
           )}
-          {!guest && <PositionSizingPreview sizing={result.position_sizing_preview} heat={result.portfolio_heat_preview} />}
-          {!guest && <StructurePlanV2Preview plan={result.entry_plan_v2 || result.entry_plan_v2_json} />}
+          {!guest && result.final_action_card?.active_trade_plan?.exists && <PositionSizingPreview sizing={result.position_sizing_preview} heat={result.portfolio_heat_preview} />}
+          {!guest && showDebugPlans && <StructurePlanV2Preview plan={result.debug_v1_v2?.entry_plan_v2 || result.debug_v1_v2?.entry_plan_v2_json} />}
           {(!guest || guestZoneAccepted) && <DecisionLayerSections analysis={result} compact={guest} />}
           {guest && suggestedZone && !guestZoneAccepted && (
             <div style={{ marginTop: 12, padding: 12, borderRadius: 8, border: "1px solid var(--border2)", background: "rgba(0,170,255,0.06)" }}>
@@ -1947,11 +1948,6 @@ function ScreenerPage({ onScanComplete, readOnly = false }) {
                             Size {r.position_sizing_preview.shares ?? "-"} sh · {r.position_sizing_preview.sizing_status || "Preview"}
                           </span>
                         )}
-                        {(r.entry_plan_v2 || r.entry_plan_v2_json || r.v2_entry_plan_type) && (
-                          <span className="tag" style={{ fontSize: 10, color: "var(--green2)", borderColor: "rgba(163,247,191,0.32)" }}>
-                            {r.v2_plan_quality || r.entry_plan_v2?.v2_plan_quality || "Watch"} · {normalizeActionLabel(r.v2_action_status || r.entry_plan_v2?.v2_action_status || "watch_only")}
-                          </span>
-                        )}
                       </div>
                     </td>
                     <td><span style={{ color: (r.rsi || 50) < 35 ? "var(--green)" : (r.rsi || 50) > 70 ? "var(--red)" : "var(--text2)" }}>{r.rsi?.toFixed(0) || "–"}</span></td>
@@ -2007,15 +2003,15 @@ function ScreenerPage({ onScanComplete, readOnly = false }) {
                         </div>
                       )}
                       <UnifiedActionCard analysis={analysis} mode="entry" />
-                      {analysis.suggested_entry_zone && (
+                      {analysis.debug_v1_v2?.suggested_entry_zone && (
                         <SuggestedEntryZone
-                          zone={analysis.suggested_entry_zone}
+                          zone={analysis.debug_v1_v2.suggested_entry_zone}
                           description="Research-only entry zone from this AI analysis."
                           action={<EntryWatchButton analysis={{ ...analysis, ticker: selected }} />}
                           entrySignal={analysis.entry_signal}
                         />
                       )}
-                      <StructurePlanV2Preview plan={analysis.entry_plan_v2 || analysis.entry_plan_v2_json} />
+                      {analysis.debug_v1_v2 && <StructurePlanV2Preview plan={analysis.debug_v1_v2.entry_plan_v2 || analysis.debug_v1_v2.entry_plan_v2_json} />}
                       <DecisionLayerSections analysis={analysis} />
                     </>
                   : null
@@ -2150,7 +2146,8 @@ const buildEntryWatchPayload = (analysisInput, strategyMode = null) => {
   const selectedMode = strategyMode || analysis.strategy_mode || "swing_3_10d";
   const quick = analysis.quick_momentum || {};
   const final = quick.final_action_card || analysis.final_action_card || {};
-  const zone = analysis.suggested_entry_zone || {};
+  const activePlan = final.active_trade_plan || {};
+  const zone = activePlan.exists ? (analysis.suggested_entry_zone || analysis.debug_v1_v2?.suggested_entry_zone || {}) : {};
   const ticker = String(analysis.ticker || "").trim().toUpperCase();
   return {
     ticker,
@@ -2163,13 +2160,13 @@ const buildEntryWatchPayload = (analysisInput, strategyMode = null) => {
     aggressive_entry: numberOrNull(zone.aggressive_entry),
     conservative_entry: numberOrNull(zone.conservative_entry),
     preferred_entry: numberOrNull(zone.preferred_entry),
-    ideal_stop: numberOrNull(zone.ideal_stop ?? analysis.stop),
-    target: numberOrNull(zone.target ?? analysis.target),
-    trigger_price: numberOrNull(quick.trigger_price ?? final.trigger_price),
+    ideal_stop: numberOrNull(activePlan.exists ? (final.active_stop ?? zone.ideal_stop ?? analysis.stop) : null),
+    target: numberOrNull(activePlan.exists ? (final.target_1 ?? zone.target ?? analysis.target) : null),
+    trigger_price: numberOrNull(activePlan.exists ? (quick.trigger_price ?? final.active_entry ?? final.trigger_price) : null),
     pullback_zone_low: numberOrNull(quick.pullback_zone_low),
     pullback_zone_high: numberOrNull(quick.pullback_zone_high),
-    target_1: numberOrNull(quick.target_1 ?? final.target_1 ?? zone.target ?? analysis.target),
-    target_2: numberOrNull(quick.target_2 ?? final.target_2),
+    target_1: numberOrNull(activePlan.exists ? (quick.target_1 ?? final.target_1 ?? zone.target ?? analysis.target) : null),
+    target_2: numberOrNull(activePlan.exists ? (quick.target_2 ?? final.target_2) : null),
     stretch_target: numberOrNull(quick.stretch_target ?? final.stretch_target),
     time_stop_days: selectedMode === "quick_momentum_1_3d" ? 3 : null,
     alert_stage: quick.alert_stage || final.final_action || null,
@@ -2240,6 +2237,7 @@ function QuickMomentumPanel({ analysis }) {
   const final = quick.final_action_card || analysis.final_action_card || {};
   const market = quick.market_condition || analysis.market_condition || {};
   const data = quick.data_confidence || {};
+  const activePlan = final.active_trade_plan || {};
   return (
     <div style={{ marginTop: 12, padding: 12, borderRadius: 8, background: "rgba(77,166,255,0.045)", border: "1px solid rgba(77,166,255,0.18)" }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "flex-start", marginBottom: 10 }}>
@@ -2261,10 +2259,10 @@ function QuickMomentumPanel({ analysis }) {
         ["Setup Type", quick.setup_type || "-"],
         ["Trigger", fmtMoneyDash(quick.trigger_price)],
         ["Pullback Zone", quick.pullback_zone_low || quick.pullback_zone_high ? `${fmtMoneyDash(quick.pullback_zone_low)} - ${fmtMoneyDash(quick.pullback_zone_high)}` : "-"],
-        ["Stop", fmtMoneyDash(quick.stop_level || final.invalid_below)],
+        ["Stop", activePlan.exists ? fmtMoneyDash(quick.stop_level || final.active_stop || final.invalid_below) : "-"],
         ["Stop Quality", quick.stop_quality || "-"],
-        ["Target 1", fmtMoneyDash(quick.target_1 || final.target_1)],
-        ["Target 2", fmtMoneyDash(quick.target_2 || final.target_2)],
+        ["Target 1", activePlan.exists ? fmtMoneyDash(quick.target_1 || final.target_1) : "-"],
+        ["Target 2", activePlan.exists ? fmtMoneyDash(quick.target_2 || final.target_2) : "-"],
         ["Time Stop", `${final.time_stop_days || 3} days`],
       ]} />
       <div style={{ marginTop: 8, padding: "8px 10px", borderRadius: 6, background: "rgba(255,255,255,0.025)", border: "1px solid var(--border2)", color: "var(--text)", fontSize: 12, lineHeight: 1.45 }}>
@@ -2609,16 +2607,17 @@ function FinalActionCard({ summary, preview }) {
 }
 
 function UnifiedActionCard({ analysis, mode = "entry" }) {
-  const ua = analysis?.unified_action || analysis?.final_action_card;
+  const ua = analysis?.final_action_card || analysis?.unified_action;
   if (!ua) return null;
   const fa = String(ua.final_action || "").toLowerCase();
   const isGreen = ["entry_ready"].includes(fa);
-  const isRed = ["invalidated", "avoid", "market_hostile", "high_exit_risk", "exit_stop_triggered"].includes(fa);
+  const isRed = ["invalidated", "avoid", "market_hostile", "high_exit_risk", "exit_stop_triggered", "data_anomaly_no_action"].includes(fa);
   const isAmber = ["missed_first_entry", "too_extended", "data_stale", "reduce_exposure", "pullback_forming", "take_partial"].includes(fa);
   const accentColor = isGreen ? "var(--green)" : isRed ? "var(--red)" : isAmber ? "var(--amber)" : "var(--blue)";
   const accentBg = isGreen ? "rgba(34,197,94,0.06)" : isRed ? "rgba(255,77,77,0.06)" : isAmber ? "rgba(251,176,36,0.06)" : "rgba(77,166,255,0.06)";
   const accentBorder = isGreen ? "rgba(34,197,94,0.22)" : isRed ? "rgba(255,77,77,0.22)" : isAmber ? "rgba(251,176,36,0.22)" : "rgba(77,166,255,0.22)";
-  const kl = ua.key_levels || {};
+  const activePlan = ua.active_trade_plan || {};
+  const refs = ua.reference_levels || analysis?.reference_levels || {};
   const why = ua.why_no_alert;
   const riskStyle = {
     critical: { color: "var(--red)", borderColor: "rgba(255,77,77,0.42)", background: "rgba(255,77,77,0.08)" },
@@ -2639,15 +2638,30 @@ function UnifiedActionCard({ analysis, mode = "entry" }) {
       <div style={{ padding: "9px 11px", borderRadius: 6, background: "rgba(255,255,255,0.03)", border: "1px solid var(--border2)", fontSize: 12, lineHeight: 1.45, color: "var(--text)" }}>
         <strong>Next step:</strong> {ua.next_step}
       </div>
-      {(kl.preferred_entry || kl.ideal_stop || kl.target_1 || kl.current_price) && (
+      {activePlan.exists && (ua.active_entry || ua.active_stop || ua.target_1 || ua.target_2) && (
         <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {kl.current_price && <span className="tag" style={{ fontSize: 11 }}>Price {fmtMoneyDash(kl.current_price)}</span>}
-          {kl.preferred_entry && <span className="tag" style={{ fontSize: 11, color: "var(--green)", borderColor: "rgba(34,197,94,0.35)" }}>Entry ~{fmtMoneyDash(kl.preferred_entry)}</span>}
-          {kl.ideal_stop && <span className="tag" style={{ fontSize: 11, color: "var(--red)", borderColor: "rgba(255,77,77,0.35)" }}>Stop {fmtMoneyDash(kl.ideal_stop)}</span>}
-          {kl.target_1 && <span className="tag" style={{ fontSize: 11, color: "var(--green2)", borderColor: "rgba(163,247,191,0.35)" }}>T1 {fmtMoneyDash(kl.target_1)}</span>}
-          {kl.target_2 && <span className="tag" style={{ fontSize: 11, color: "var(--muted)" }}>T2 {fmtMoneyDash(kl.target_2)}</span>}
-          {kl.saved_stop && mode === "portfolio" && <span className="tag" style={{ fontSize: 11, color: "var(--red)", borderColor: "rgba(255,77,77,0.35)" }}>Saved Stop {fmtMoneyDash(kl.saved_stop)}</span>}
+          {ua.active_entry && <span className="tag" style={{ fontSize: 11, color: "var(--green)", borderColor: "rgba(34,197,94,0.35)" }}>Entry ~{fmtMoneyDash(ua.active_entry)}</span>}
+          {ua.active_stop && <span className="tag" style={{ fontSize: 11, color: "var(--red)", borderColor: "rgba(255,77,77,0.35)" }}>Stop {fmtMoneyDash(ua.active_stop)}</span>}
+          {ua.target_1 && <span className="tag" style={{ fontSize: 11, color: "var(--green2)", borderColor: "rgba(163,247,191,0.35)" }}>T1 {fmtMoneyDash(ua.target_1)}</span>}
+          {ua.target_2 && <span className="tag" style={{ fontSize: 11, color: "var(--muted)" }}>T2 {fmtMoneyDash(ua.target_2)}</span>}
         </div>
+      )}
+      {ua.data_quality?.status && ua.data_quality.status !== "valid" && (
+        <div style={{ marginTop: 10, padding: "9px 11px", borderRadius: 6, background: "rgba(255,77,77,0.06)", border: "1px solid rgba(255,77,77,0.25)", color: "var(--red)", fontSize: 12, lineHeight: 1.45 }}>
+          {ua.data_quality.message || "Data warning. No action."}
+        </div>
+      )}
+      {(refs.possible_pullback_zone || refs.resistance || refs.old_breakout_level || refs.invalidation_reference || refs.four_hour_support) && (
+        <details style={{ marginTop: 10 }}>
+          <summary style={{ cursor: "pointer", fontSize: 12, color: "var(--muted)", fontWeight: 700 }}>Reference Levels</summary>
+          <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {refs.possible_pullback_zone?.preferred && <span className="tag" style={{ fontSize: 11 }}>Pullback {fmtMoneyDash(refs.possible_pullback_zone.preferred)}</span>}
+            {refs.resistance && <span className="tag" style={{ fontSize: 11 }}>Resistance {fmtMoneyDash(refs.resistance)}</span>}
+            {refs.old_breakout_level && <span className="tag" style={{ fontSize: 11 }}>Breakout {fmtMoneyDash(refs.old_breakout_level)}</span>}
+            {refs.invalidation_reference && <span className="tag" style={{ fontSize: 11 }}>Invalidation ref {fmtMoneyDash(refs.invalidation_reference)}</span>}
+            {refs.four_hour_support && <span className="tag" style={{ fontSize: 11 }}>4H support {fmtMoneyDash(refs.four_hour_support)}</span>}
+          </div>
+        </details>
       )}
       {why && why.alert_status === "NO_ALERT" && mode === "entry" && (
         <details style={{ marginTop: 10 }}>
@@ -2805,9 +2819,9 @@ function PortfolioLiveAnalysisPanel({ data, error }) {
       </details>
       <details style={{ padding: 12, borderRadius: 8, background: "rgba(255,255,255,0.018)", border: "1px solid var(--border2)" }}>
         <summary style={{ cursor: "pointer", fontWeight: 800 }}>Raw Diagnostics</summary>
-        <SuggestedEntryZone zone={live.suggested_entry_zone} entrySignal={live.entry_signal} />
-        <PositionSizingPreview sizing={live.position_sizing_preview} heat={live.portfolio_heat_preview} />
-        <StructurePlanV2Preview plan={live.entry_plan_v2 || live.entry_plan_v2_json} />
+        {live.debug_v1_v2?.suggested_entry_zone && <SuggestedEntryZone zone={live.debug_v1_v2.suggested_entry_zone} entrySignal={live.entry_signal} />}
+        {live.final_action_card?.active_trade_plan?.exists && <PositionSizingPreview sizing={live.position_sizing_preview} heat={live.portfolio_heat_preview} />}
+        {live.debug_v1_v2 && <StructurePlanV2Preview plan={live.debug_v1_v2.entry_plan_v2 || live.debug_v1_v2.entry_plan_v2_json} />}
         <DecisionLayerSections analysis={live} />
       </details>
     </div>
@@ -3162,9 +3176,9 @@ function PortfolioPage({ positions, onRefresh }) {
             </div>}
             <UnifiedActionCard analysis={singleScan} mode="entry" />
             <QuickMomentumPanel analysis={singleScan} />
-            {singleScan.strategy_mode !== "quick_momentum_1_3d" && <SuggestedEntryZone zone={singleScan.suggested_entry_zone} entrySignal={singleScan.entry_signal} />}
-            <PositionSizingPreview sizing={singleScan.position_sizing_preview} heat={singleScan.portfolio_heat_preview} />
-            {singleScan.strategy_mode !== "quick_momentum_1_3d" && <StructurePlanV2Preview plan={singleScan.entry_plan_v2 || singleScan.entry_plan_v2_json} />}
+            {singleScan.debug_v1_v2 && singleScan.strategy_mode !== "quick_momentum_1_3d" && <SuggestedEntryZone zone={singleScan.debug_v1_v2.suggested_entry_zone} entrySignal={singleScan.entry_signal} />}
+            {singleScan.final_action_card?.active_trade_plan?.exists && <PositionSizingPreview sizing={singleScan.position_sizing_preview} heat={singleScan.portfolio_heat_preview} />}
+            {singleScan.debug_v1_v2 && singleScan.strategy_mode !== "quick_momentum_1_3d" && <StructurePlanV2Preview plan={singleScan.debug_v1_v2.entry_plan_v2 || singleScan.debug_v1_v2.entry_plan_v2_json} />}
             <DecisionLayerSections analysis={singleScan} />
           </div>
         )}
