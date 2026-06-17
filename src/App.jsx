@@ -88,8 +88,9 @@ const formatConfidence = item => {
 };
 const formatFreshness = value => {
   if (!value) return "Updated time unknown";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return "Updated time unknown";
+  const d = parseQuoteTimestamp(value);
+  if (!d || Number.isNaN(d.getTime())) return "Updated time unknown";
+  if (d.getFullYear() < 2000) return "Updated time unknown";
   const diffMs = Date.now() - d.getTime();
   if (diffMs < 0) return `Updated ${d.toLocaleString()}`;
   const mins = Math.round(diffMs / 60000);
@@ -104,7 +105,10 @@ const normalizeActionLabel = value => ({
   near_entry: "Near Entry",
   wait_for_confirmation: "Wait for Confirmation",
   wait_for_confirmation_constructive: "Wait for Confirmation",
-  wait_for_1h_confirmation: "Wait — 1H Pending",
+  wait_for_1h_confirmation: "Wait — 30m Pending",
+  wait_for_30m_confirmation: "Wait — 30m Pending",
+  waiting_for_30m_confirmation: "Wait — 30m Pending",
+  waiting_for_30m_data: "30m Data Unavailable",
   wait_for_trigger: "Waiting for Trigger",
   wait_for_pullback: "Wait for Pullback",
   wait_for_breakout: "Wait for Breakout",
@@ -140,7 +144,8 @@ const marketRegimeStyle = regime => {
 const decisionStatusStyle = status => {
   const value = String(status || "");
   if (value === "entry_ready") return { color: "var(--green)", borderColor: "rgba(34,197,94,0.42)", background: "rgba(34,197,94,0.08)" };
-  if (["wait_for_confirmation", "wait_for_1h_confirmation", "market_hostile"].includes(value)) return { color: "var(--blue)", borderColor: "rgba(77,166,255,0.42)", background: "rgba(77,166,255,0.08)" };
+  if (["wait_for_confirmation", "wait_for_1h_confirmation", "wait_for_30m_confirmation", "waiting_for_30m_confirmation", "market_hostile"].includes(value)) return { color: "var(--blue)", borderColor: "rgba(77,166,255,0.42)", background: "rgba(77,166,255,0.08)" };
+  if (["waiting_for_30m_data"].includes(value)) return { color: "var(--amber)", borderColor: "rgba(251,176,36,0.42)", background: "rgba(251,176,36,0.08)" };
   if (["watch_only", "too_extended", "missed_first_entry", "pullback_forming", "data_stale"].includes(value)) return { color: "var(--amber)", borderColor: "rgba(251,176,36,0.42)", background: "rgba(251,176,36,0.08)" };
   if (["avoid", "invalidated", "market_hostile"].includes(value)) return { color: "var(--red)", borderColor: "rgba(255,77,77,0.42)", background: "rgba(255,77,77,0.08)" };
   if (["reconfirmation_needed", "setup_forming"].includes(value)) return { color: "var(--blue)", borderColor: "rgba(77,166,255,0.42)", background: "rgba(77,166,255,0.08)" };
@@ -170,7 +175,10 @@ const timingLabel = value => ({
   entry_ready: "Entry Ready",
   tradeable_now: "Entry Ready",
   near_entry: "Near Entry",
-  wait_for_1h_confirmation: "Wait — 1H Pending",
+  wait_for_1h_confirmation: "Wait — 30m Pending",
+  wait_for_30m_confirmation: "Wait — 30m Pending",
+  waiting_for_30m_confirmation: "Wait — 30m Pending",
+  waiting_for_30m_data: "30m Data Unavailable",
   wait_for_confirmation: "Wait for Confirmation",
   wait_for_confirmation_constructive: "Wait for Confirmation",
   wait_for_trigger: "Waiting for Trigger",
@@ -197,7 +205,10 @@ const actionLabel = value => ({
   consider_entry: "Near Entry",
   buy_signal_ready: "Entry Ready",
   near_entry: "Near Entry",
-  wait_for_1h_confirmation: "Wait — 1H Pending",
+  wait_for_1h_confirmation: "Wait — 30m Pending",
+  wait_for_30m_confirmation: "Wait — 30m Pending",
+  waiting_for_30m_confirmation: "Wait — 30m Pending",
+  waiting_for_30m_data: "30m Data Unavailable",
   wait_for_confirmation: "Wait for Confirmation",
   wait_for_trigger: "Waiting for Trigger",
   market_hostile: "Market Hostile",
@@ -230,12 +241,15 @@ const normalizedWatchEntryTiming = row => {
   const action = String(row?.entry_signal_action || "");
   if (
     timing === "avoid" &&
-    row?.status === "waiting_for_1h_confirmation" &&
+    (row?.status === "waiting_for_1h_confirmation" || row?.status === "waiting_for_30m_confirmation") &&
     row?.entry_signal_status === "pending" &&
     action.startsWith("wait")
   ) {
-    return "wait_for_1h_confirmation";
+    return "wait_for_30m_confirmation";
   }
+  if (timing === "waiting_for_30m_data" || row?.status === "waiting_for_30m_data") return "waiting_for_30m_data";
+  if (timing === "waiting_for_30m_confirmation" || row?.status === "waiting_for_30m_confirmation") return "wait_for_30m_confirmation";
+  if (timing === "wait_for_30m_confirmation") return "wait_for_30m_confirmation";
   if (timing === "wait_for_confirmation") return "wait_for_confirmation";
   if (timing === "wait_for_pullback") return "wait_for_pullback";
   if (timing === "missed_first_entry") return "missed_first_entry";
@@ -1136,7 +1150,7 @@ function parseQuoteTimestamp(value) {
 
 function formatQuoteTimeEt(value) {
   const date = parseQuoteTimestamp(value);
-  if (!date) return "unavailable";
+  if (!date || date.getFullYear() < 2000) return "unavailable";
   return `${date.toLocaleTimeString("en-US", {
     hour: "numeric",
     minute: "2-digit",
@@ -1386,8 +1400,8 @@ function SingleTickerCheck({ guest = false }) {
     setShowGuestZoneDisclaimer(true);
   };
   const singleTickerColumns = guest
-    ? ["Price", "RSI", "Vol Ratio", "Target", "Stop Loss"]
-    : ["Price", "Chg%", "RSI", "Vol Ratio", "Target", "Stop Loss", "R:R", "Source"];
+    ? ["Price", "RSI", "Vol Ratio"]
+    : ["Price", "Chg%", "RSI", "Vol Ratio", "Source"];
 
   return (
     <div className="card" style={{ marginBottom: 14 }}>
@@ -1445,9 +1459,6 @@ function SingleTickerCheck({ guest = false }) {
                   {!guest && <td>{result.change_pct == null ? "-" : `${Number(result.change_pct).toFixed(2)}%`}</td>}
                   <td>{formatNumber(result.rsi)}</td>
                   <td>{volumeRatio == null ? "-" : `${Number(volumeRatio).toFixed(2)}x`}</td>
-                  <td>{formatMoney(result.target)}</td>
-                  <td>{formatMoney(stop)}</td>
-                  {!guest && <td>{result.risk_reward == null ? "-" : `1:${Number(result.risk_reward).toFixed(2)}`}</td>}
                   {!guest && (
                     <td>
                       <div>{result.data_source || "-"}</div>
@@ -2094,7 +2105,7 @@ const listify = value => {
 };
 const ENTRY_STATUS_LABELS = {
   waiting_for_pullback: "Waiting for Pullback",
-  waiting_for_1h_confirmation: "Wait — 1H Pending",
+  waiting_for_1h_confirmation: "Wait — 30m Pending",
   entry_confirmed: "Entry Confirmed",
   entry_ready: "Entry Ready",
   missed_entry: "Missed — Wait for Pullback",
@@ -2109,7 +2120,10 @@ const ENTRY_ACTION_LABELS = {
   wait: "Wait",
   watch: "Watch",
   wait_for_pullback: "Wait for Pullback",
-  wait_for_1h_confirmation: "Wait — 1H Pending",
+  wait_for_1h_confirmation: "Wait — 30m Pending",
+  wait_for_30m_confirmation: "Wait — 30m Pending",
+  waiting_for_30m_confirmation: "Wait — 30m Pending",
+  waiting_for_30m_data: "30m Data Unavailable",
   wait_for_trigger: "Waiting for Trigger",
   consider_entry: "Buy Watch",
   entry_ready: "Entry Ready",
@@ -2172,7 +2186,7 @@ const buildEntryWatchPayload = (analysisInput, strategyMode = null) => {
     alert_stage: quick.alert_stage || final.final_action || null,
     original_watch_reason: final.main_reason || zone.entry_reason || "",
     risk_reward: numberOrNull(zone.risk_reward_conservative ?? analysis.risk_reward),
-    entry_timing: normalizedWatchEntryTiming({ entry_timing: zone.entry_timing || analysis.entry_timing || "wait_for_1h_confirmation" }),
+    entry_timing: normalizedWatchEntryTiming({ entry_timing: zone.entry_timing || analysis.entry_timing || "wait_for_30m_confirmation" }),
   };
 };
 
@@ -2357,28 +2371,34 @@ function DecisionLayerSections({ analysis, compact = false }) {
       {(() => {
         const refs = analysis.reference_levels || (analysis.final_action_card || {}).reference_levels || {};
         const has4hMap = refs.s1_4h != null || refs.r1_4h != null || refs.breakout_4h != null;
-        if (!has4hMap) return null;
-        const rr = analysis.conditional_rr || {};
-        const conf30m = analysis.confirmation_30m || {};
+        const hasFinalActionCard = analysis.final_action_card != null || analysis.unified_action != null;
+        if (!hasFinalActionCard) return null;
+        const noDataReason = !has4hMap ? "4H candle data unavailable — reference levels cannot be calculated" : null;
         return (
           <details open style={sectionStyle}>
             <summary style={{ cursor: "pointer", fontWeight: 800, listStyle: "none" }}>4H Reference Map</summary>
             <div style={{ marginTop: 10 }}>
               {refs.pullback_zone?.in_zone && (
                 <div style={{ marginBottom: 8, padding: "6px 10px", borderRadius: 5, background: "rgba(251,176,36,0.08)", border: "1px solid rgba(251,176,36,0.25)", color: "var(--amber)", fontSize: 12 }}>
-                  Pullback in progress — wait for 30m confirmation
+                  Pullback in progress — wait for 30m candle-close confirmation
                 </div>
               )}
-              <DetailGrid items={[
-                ["4H S1 Support", refs.s1_4h != null ? `$${Number(refs.s1_4h).toFixed(2)}` : "—"],
-                ["4H S2 Support", refs.s2_4h != null ? `$${Number(refs.s2_4h).toFixed(2)}` : "—"],
-                ["4H R1 Resistance", refs.r1_4h != null ? `$${Number(refs.r1_4h).toFixed(2)}` : "—"],
-                ["4H R2 Resistance", refs.r2_4h != null ? `$${Number(refs.r2_4h).toFixed(2)}` : "—"],
-                ["4H Breakout Level", refs.breakout_4h != null ? `$${Number(refs.breakout_4h).toFixed(2)}` : "—"],
-                ["4H Trend Failure", refs.trend_failure_4h != null ? `$${Number(refs.trend_failure_4h).toFixed(2)}` : "—"],
-              ]} />
+              {noDataReason ? (
+                <div style={{ padding: "6px 10px", borderRadius: 5, background: "rgba(255,255,255,0.025)", border: "1px solid var(--border2)", color: "var(--muted)", fontSize: 12, lineHeight: 1.4 }}>
+                  {noDataReason}
+                </div>
+              ) : (
+                <DetailGrid items={[
+                  ["4H S1 Support", refs.s1_4h != null ? `$${Number(refs.s1_4h).toFixed(2)}` : "Not enough 4H pivot data"],
+                  ["4H S2 Support", refs.s2_4h != null ? `$${Number(refs.s2_4h).toFixed(2)}` : "Not enough 4H pivot data"],
+                  ["4H R1 Resistance", refs.r1_4h != null ? `$${Number(refs.r1_4h).toFixed(2)}` : "Not enough 4H pivot data"],
+                  ["4H R2 Resistance", refs.r2_4h != null ? `$${Number(refs.r2_4h).toFixed(2)}` : "Not enough 4H pivot data"],
+                  ["4H Breakout Level", refs.breakout_4h != null ? `$${Number(refs.breakout_4h).toFixed(2)} (above R1)` : "Not calculated — R1 unavailable"],
+                  ["4H Trend Failure", refs.trend_failure_4h != null ? `$${Number(refs.trend_failure_4h).toFixed(2)}` : "Not calculated — S2 unavailable"],
+                ]} />
+              )}
               <div style={{ marginTop: 5, fontSize: 10, color: "var(--muted)", lineHeight: 1.4 }}>
-                All levels from 4H closed candles. Trend Failure = 4H bullish structure broken — not a trade stop loss.
+                All levels derived from 4H closed candles only. Breakout = above R1 with buffer. Trend Failure = 4H bullish structure breaks — not a trade stop loss.
               </div>
             </div>
           </details>
@@ -2390,11 +2410,15 @@ function DecisionLayerSections({ analysis, compact = false }) {
         const rr = analysis.conditional_rr || {};
         const conf30m = analysis.confirmation_30m || {};
         const hasRR = rr.trade_plan_status || rr.estimated_rr_to_r1 != null;
-        if (!hasRR && !conf30m.data_available) return null;
+        const has30mStatus = conf30m.data_available != null || rr.trade_plan_status;
+        if (!hasRR && !has30mStatus) return null;
         const isConfirmed = conf30m.confirmed;
         const status = rr.trade_plan_status || "no_active_trade_plan_yet";
-        const statusColor = isConfirmed ? "var(--green)" : status === "not_practical" ? "var(--red)" : "var(--amber)";
-        const tradePlanNote = rr.trade_plan_note || "No active trade plan yet — waiting for 30m confirmation.";
+        const no30mData = conf30m.data_available === false || status === "insufficient_30m_data";
+        const statusColor = isConfirmed ? "var(--green)" : no30mData ? "var(--muted)" : status === "not_practical" ? "var(--red)" : "var(--amber)";
+        const tradePlanNote = rr.trade_plan_note || (no30mData
+          ? "30m confirmation unavailable — missing 30m candle data. No active trade plan."
+          : "No active trade plan yet — waiting for 30m candle-close confirmation.");
         return (
           <details open style={sectionStyle}>
             <summary style={{ cursor: "pointer", fontWeight: 800, listStyle: "none", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -2402,22 +2426,28 @@ function DecisionLayerSections({ analysis, compact = false }) {
               <span style={{ fontSize: 11, color: statusColor, fontWeight: 700, textTransform: "uppercase" }}>{status.replace(/_/g, " ")}</span>
             </summary>
             <div style={{ marginTop: 10 }}>
-              <div style={{ marginBottom: 8, padding: "7px 10px", borderRadius: 5, background: "rgba(255,255,255,0.025)", border: "1px solid var(--border2)", fontSize: 12, color: "var(--text2)", lineHeight: 1.5 }}>
-                {tradePlanNote}
-              </div>
+              {no30mData ? (
+                <div style={{ marginBottom: 8, padding: "7px 10px", borderRadius: 5, background: "rgba(255,255,255,0.025)", border: "1px solid rgba(251,176,36,0.25)", fontSize: 12, color: "var(--amber)", lineHeight: 1.5 }}>
+                  30m confirmation unavailable — missing 30m candle data. No active trade plan.
+                </div>
+              ) : (
+                <div style={{ marginBottom: 8, padding: "7px 10px", borderRadius: 5, background: "rgba(255,255,255,0.025)", border: "1px solid var(--border2)", fontSize: 12, color: "var(--text2)", lineHeight: 1.5 }}>
+                  {tradePlanNote}
+                </div>
+              )}
               <DetailGrid items={[
-                ["30m Confirmation", conf30m.condition_description || (conf30m.data_available ? "Watching" : "No 30m data")],
-                ["Confirmation Type", isConfirmed ? conf30m.confirmation_type?.replace("_", " ") : "—"],
+                ["30m Confirmation", no30mData ? "Missing 30m candle data — no entry confirmation possible" : (conf30m.condition_description || "Watching")],
+                ["Confirmation Type", isConfirmed ? (conf30m.confirmation_type?.replace(/_/g, " ") || "—") : "—"],
                 ["Confirmation Price", isConfirmed && conf30m.confirmation_price != null ? `$${Number(conf30m.confirmation_price).toFixed(2)}` : "—"],
-                ["Assumed Entry", rr.assumed_entry_price != null ? `$${Number(rr.assumed_entry_price).toFixed(2)}` : "—"],
-                ["Stop Reference (4H S1)", rr.stop_reference_level != null ? `$${Number(rr.stop_reference_level).toFixed(2)}` : "—"],
-                ["R1 Target Reference", rr.r1_reward_reference != null ? `$${Number(rr.r1_reward_reference).toFixed(2)}` : "—"],
-                ["R2 Target Reference", rr.r2_reward_reference != null ? `$${Number(rr.r2_reward_reference).toFixed(2)}` : "—"],
-                ["Est R:R to R1", rr.estimated_rr_to_r1 != null ? `${Number(rr.estimated_rr_to_r1).toFixed(1)}:1` : "—"],
-                ["Est R:R to R2", rr.estimated_rr_to_r2 != null ? `${Number(rr.estimated_rr_to_r2).toFixed(1)}:1` : "—"],
+                ["Assumed Entry", !no30mData && rr.assumed_entry_price != null ? `$${Number(rr.assumed_entry_price).toFixed(2)}` : (no30mData ? "Unavailable (no 30m data)" : "—")],
+                ["Stop Reference (4H S1)", rr.stop_reference_level != null ? `$${Number(rr.stop_reference_level).toFixed(2)} (4H support zone)` : "—"],
+                ["Nearest 4H Resistance (R1)", rr.r1_reward_reference != null ? `$${Number(rr.r1_reward_reference).toFixed(2)}` : "—"],
+                ["Next 4H Resistance (R2)", rr.r2_reward_reference != null ? `$${Number(rr.r2_reward_reference).toFixed(2)}` : "—"],
+                ["Est R:R to R1", !no30mData && rr.estimated_rr_to_r1 != null ? `${Number(rr.estimated_rr_to_r1).toFixed(1)}:1 (if 30m confirms)` : "—"],
+                ["Est R:R to R2", !no30mData && rr.estimated_rr_to_r2 != null ? `${Number(rr.estimated_rr_to_r2).toFixed(1)}:1 (if 30m confirms)` : "—"],
               ]} />
               <div style={{ marginTop: 5, fontSize: 10, color: "var(--muted)", lineHeight: 1.4 }}>
-                Stop reference = 4H S1 (structural support, not trade stop loss). Target references = 4H R1/R2. R:R is estimated; actual trade levels are your responsibility.
+                Stop reference = 4H S1 (structural support, not a trade stop loss). Target references = nearest 4H resistance. R:R is estimated only if 30m confirmation triggers. Actual levels are your responsibility.
               </div>
             </div>
           </details>
@@ -2431,7 +2461,7 @@ function DecisionLayerSections({ analysis, compact = false }) {
             <DetailGrid items={[
               ["Daily Context", summary.daily_context || "-"],
               ["4H Setup", summary.four_hour_setup || "-"],
-              ["1H Entry", summary.one_hour_entry || "-"],
+              ["30m Confirmation", summary.thirty_min_confirmation || summary.one_hour_entry || "-"],
               ["Quality Grade", summary.quality_grade || analysis.quality_grade || "-"],
               ["Setup Validity", compactStatus(analysis.setup_validity)],
               ["Risk Status", compactStatus(analysis.risk_status)],
@@ -2545,7 +2575,7 @@ function SuggestedEntryZone({ zone, description = "Research-only entry zone from
             ["R:R (Conservative)", fmtRRDash(zone.risk_reward_conservative)],
             ["R:R (Aggressive)", fmtRRDash(zone.risk_reward_aggressive)],
             ["Distance to Entry", zone.distance_to_entry_pct != null ? `${Number(zone.distance_to_entry_pct).toFixed(2)}%` : "-"],
-            ["1H Confirmation", confirmationLabel(confirmationPassed)],
+            ["30m Confirmation", confirmationLabel(confirmationPassed)],
           ]} />
           {entryNotConfirmed && blockReason && (
             <div style={{ marginTop: 10, padding: "9px 11px", borderRadius: 6, background: "rgba(251,176,36,0.08)", border: "1px solid rgba(251,176,36,0.22)", color: "var(--amber)", fontSize: 12, lineHeight: 1.5 }}>
@@ -2737,7 +2767,7 @@ function UnifiedActionCard({ analysis, mode = "entry" }) {
           <div style={{ marginTop: 8 }}>
             {refs.pullback_zone?.in_zone && (
               <div style={{ marginBottom: 8, padding: "6px 10px", borderRadius: 5, background: "rgba(251,176,36,0.08)", border: "1px solid rgba(251,176,36,0.25)", color: "var(--amber)", fontSize: 11 }}>
-                Pullback in progress — wait for 30m confirmation
+                Pullback in progress — wait for 30m candle-close confirmation
               </div>
             )}
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -2749,19 +2779,8 @@ function UnifiedActionCard({ analysis, mode = "entry" }) {
               {refs.trend_failure_4h != null && <span className="tag" style={{ fontSize: 11, color: "var(--red)" }}>4H Trend Failure {fmtMoneyDash(refs.trend_failure_4h)}</span>}
             </div>
             <div style={{ marginTop: 5, fontSize: 10, color: "var(--muted)", lineHeight: 1.4 }}>
-              Trend Failure = 4H bullish structure breaks. Not a trade stop loss.
+              All levels from 4H closed candles. Breakout = above R1 with buffer. Trend Failure = 4H bullish structure breaks — not a trade stop loss.
             </div>
-          </div>
-        </details>
-      ) : (refs.possible_pullback_zone || refs.resistance || refs.old_breakout_level || refs.trend_failure_reference || refs.four_hour_support) ? (
-        <details style={{ marginTop: 10 }}>
-          <summary style={{ cursor: "pointer", fontSize: 12, color: "var(--muted)", fontWeight: 700 }}>Reference Levels</summary>
-          <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {refs.possible_pullback_zone?.preferred && <span className="tag" style={{ fontSize: 11 }}>Pullback {fmtMoneyDash(refs.possible_pullback_zone.preferred)}</span>}
-            {refs.resistance && <span className="tag" style={{ fontSize: 11 }}>Resistance {fmtMoneyDash(refs.resistance)}</span>}
-            {refs.old_breakout_level && <span className="tag" style={{ fontSize: 11 }}>Breakout {fmtMoneyDash(refs.old_breakout_level)}</span>}
-            {refs.trend_failure_reference && <span className="tag" style={{ fontSize: 11 }}>4H Trend Failure {fmtMoneyDash(refs.trend_failure_reference)}</span>}
-            {refs.four_hour_support && <span className="tag" style={{ fontSize: 11 }}>4H Support {fmtMoneyDash(refs.four_hour_support)}</span>}
           </div>
         </details>
       ) : null}
@@ -3272,7 +3291,7 @@ function PortfolioPage({ positions, onRefresh }) {
               ]} />
               {(singleScan.price_in_entry_zone || singleScan.entry_signal?.price_in_entry_zone) && !(singleScan.confirmation_passed || singleScan.entry_signal?.confirmation_passed) && (
                 <div style={{ marginTop: 8, color: "var(--amber)", fontSize: 12, lineHeight: 1.5 }}>
-                  Price is in the suggested entry zone, but Buy signal is not confirmed yet. Waiting for 1H confirmation.
+                  Price is in the suggested entry zone, but Buy signal is not confirmed yet. Waiting for 30m candle-close confirmation.
                 </div>
               )}
             </div>}
