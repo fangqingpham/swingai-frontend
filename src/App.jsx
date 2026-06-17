@@ -2344,15 +2344,86 @@ function DecisionLayerSections({ analysis, compact = false }) {
               ["Leadership", analysis.leadership_rank_label || "-"],
               ["Leadership Reason", analysis.leadership_reason || analysis.leadership_warning || "-"],
               ["Sector", analysis.sector_name ? `${analysis.sector_name}${analysis.sector_etf ? ` (${analysis.sector_etf})` : ""}` : "-"],
-              ["RS vs SPY", `1M ${fmtPctSigned(analysis.rs_1m_vs_spy)} / 3M ${fmtPctSigned(analysis.rs_3m_vs_spy)}`],
-              ["RS vs Sector", `1M ${fmtPctSigned(analysis.rs_1m_vs_sector)} / 3M ${fmtPctSigned(analysis.rs_3m_vs_sector)}`],
-              ["Liquidity", analysis.liquidity_status || "-"],
+              ["RS vs SPY", (analysis.rs_1m_vs_spy == null && analysis.rs_3m_vs_spy == null) ? "Not available" : `1M ${fmtPctSigned(analysis.rs_1m_vs_spy)} / 3M ${fmtPctSigned(analysis.rs_3m_vs_spy)}`],
+              ["RS vs Sector", (analysis.rs_1m_vs_sector == null && analysis.rs_3m_vs_sector == null) ? (analysis.sector_etf ? "Sector data computing" : "No sector mapping") : `1M ${fmtPctSigned(analysis.rs_1m_vs_sector)} / 3M ${fmtPctSigned(analysis.rs_3m_vs_sector)}`],
+              ["Liquidity", analysis.liquidity_status || "Not calculated (avg dollar volume unavailable)"],
               ["Market Reason", analysis.market_regime_reason || "-"],
               ["Volume Note", analysis.volume_warning || analysis.volume_confidence_reason || "-"],
             ]} />
           </div>
         </details>
       )}
+      {/* 4H Reference Map — from 4H closed bars only (S1/S2/R1/R2/breakout/trend failure) */}
+      {(() => {
+        const refs = analysis.reference_levels || (analysis.final_action_card || {}).reference_levels || {};
+        const has4hMap = refs.s1_4h != null || refs.r1_4h != null || refs.breakout_4h != null;
+        if (!has4hMap) return null;
+        const rr = analysis.conditional_rr || {};
+        const conf30m = analysis.confirmation_30m || {};
+        return (
+          <details open style={sectionStyle}>
+            <summary style={{ cursor: "pointer", fontWeight: 800, listStyle: "none" }}>4H Reference Map</summary>
+            <div style={{ marginTop: 10 }}>
+              {refs.pullback_zone?.in_zone && (
+                <div style={{ marginBottom: 8, padding: "6px 10px", borderRadius: 5, background: "rgba(251,176,36,0.08)", border: "1px solid rgba(251,176,36,0.25)", color: "var(--amber)", fontSize: 12 }}>
+                  Pullback in progress — wait for 30m confirmation
+                </div>
+              )}
+              <DetailGrid items={[
+                ["4H S1 Support", refs.s1_4h != null ? `$${Number(refs.s1_4h).toFixed(2)}` : "—"],
+                ["4H S2 Support", refs.s2_4h != null ? `$${Number(refs.s2_4h).toFixed(2)}` : "—"],
+                ["4H R1 Resistance", refs.r1_4h != null ? `$${Number(refs.r1_4h).toFixed(2)}` : "—"],
+                ["4H R2 Resistance", refs.r2_4h != null ? `$${Number(refs.r2_4h).toFixed(2)}` : "—"],
+                ["4H Breakout Level", refs.breakout_4h != null ? `$${Number(refs.breakout_4h).toFixed(2)}` : "—"],
+                ["4H Trend Failure", refs.trend_failure_4h != null ? `$${Number(refs.trend_failure_4h).toFixed(2)}` : "—"],
+              ]} />
+              <div style={{ marginTop: 5, fontSize: 10, color: "var(--muted)", lineHeight: 1.4 }}>
+                All levels from 4H closed candles. Trend Failure = 4H bullish structure broken — not a trade stop loss.
+              </div>
+            </div>
+          </details>
+        );
+      })()}
+
+      {/* Entry Watch / Conditional Plan — 30m confirmation + estimated R:R */}
+      {(() => {
+        const rr = analysis.conditional_rr || {};
+        const conf30m = analysis.confirmation_30m || {};
+        const hasRR = rr.trade_plan_status || rr.estimated_rr_to_r1 != null;
+        if (!hasRR && !conf30m.data_available) return null;
+        const isConfirmed = conf30m.confirmed;
+        const status = rr.trade_plan_status || "no_active_trade_plan_yet";
+        const statusColor = isConfirmed ? "var(--green)" : status === "not_practical" ? "var(--red)" : "var(--amber)";
+        const tradePlanNote = rr.trade_plan_note || "No active trade plan yet — waiting for 30m confirmation.";
+        return (
+          <details open style={sectionStyle}>
+            <summary style={{ cursor: "pointer", fontWeight: 800, listStyle: "none", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span>Entry Watch / Conditional Plan</span>
+              <span style={{ fontSize: 11, color: statusColor, fontWeight: 700, textTransform: "uppercase" }}>{status.replace(/_/g, " ")}</span>
+            </summary>
+            <div style={{ marginTop: 10 }}>
+              <div style={{ marginBottom: 8, padding: "7px 10px", borderRadius: 5, background: "rgba(255,255,255,0.025)", border: "1px solid var(--border2)", fontSize: 12, color: "var(--text2)", lineHeight: 1.5 }}>
+                {tradePlanNote}
+              </div>
+              <DetailGrid items={[
+                ["30m Confirmation", conf30m.condition_description || (conf30m.data_available ? "Watching" : "No 30m data")],
+                ["Confirmation Type", isConfirmed ? conf30m.confirmation_type?.replace("_", " ") : "—"],
+                ["Confirmation Price", isConfirmed && conf30m.confirmation_price != null ? `$${Number(conf30m.confirmation_price).toFixed(2)}` : "—"],
+                ["Assumed Entry", rr.assumed_entry_price != null ? `$${Number(rr.assumed_entry_price).toFixed(2)}` : "—"],
+                ["Stop Reference (4H S1)", rr.stop_reference_level != null ? `$${Number(rr.stop_reference_level).toFixed(2)}` : "—"],
+                ["R1 Target Reference", rr.r1_reward_reference != null ? `$${Number(rr.r1_reward_reference).toFixed(2)}` : "—"],
+                ["R2 Target Reference", rr.r2_reward_reference != null ? `$${Number(rr.r2_reward_reference).toFixed(2)}` : "—"],
+                ["Est R:R to R1", rr.estimated_rr_to_r1 != null ? `${Number(rr.estimated_rr_to_r1).toFixed(1)}:1` : "—"],
+                ["Est R:R to R2", rr.estimated_rr_to_r2 != null ? `${Number(rr.estimated_rr_to_r2).toFixed(1)}:1` : "—"],
+              ]} />
+              <div style={{ marginTop: 5, fontSize: 10, color: "var(--muted)", lineHeight: 1.4 }}>
+                Stop reference = 4H S1 (structural support, not trade stop loss). Target references = 4H R1/R2. R:R is estimated; actual trade levels are your responsibility.
+              </div>
+            </div>
+          </details>
+        );
+      })()}
+
       {summary && (
         <details style={sectionStyle}>
           <summary style={{ cursor: "pointer", fontWeight: 800 }}>Trade Readiness</summary>
@@ -2659,18 +2730,41 @@ function UnifiedActionCard({ analysis, mode = "entry" }) {
           {ua.data_quality.message || "Data warning. No action."}
         </div>
       )}
-      {(refs.possible_pullback_zone || refs.resistance || refs.old_breakout_level || refs.invalidation_reference || refs.four_hour_support) && (
+      {/* 4H Reference Map — structured S1/S2/R1/R2/breakout/trend_failure */}
+      {(refs.s1_4h || refs.s2_4h || refs.r1_4h || refs.r2_4h || refs.breakout_4h || refs.trend_failure_4h) ? (
+        <details style={{ marginTop: 10 }}>
+          <summary style={{ cursor: "pointer", fontSize: 12, color: "var(--muted)", fontWeight: 700 }}>4H Reference Map</summary>
+          <div style={{ marginTop: 8 }}>
+            {refs.pullback_zone?.in_zone && (
+              <div style={{ marginBottom: 8, padding: "6px 10px", borderRadius: 5, background: "rgba(251,176,36,0.08)", border: "1px solid rgba(251,176,36,0.25)", color: "var(--amber)", fontSize: 11 }}>
+                Pullback in progress — wait for 30m confirmation
+              </div>
+            )}
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {refs.s1_4h != null && <span className="tag" style={{ fontSize: 11, color: "var(--green2)" }}>4H S1 {fmtMoneyDash(refs.s1_4h)}</span>}
+              {refs.s2_4h != null && <span className="tag" style={{ fontSize: 11, color: "var(--green2)" }}>4H S2 {fmtMoneyDash(refs.s2_4h)}</span>}
+              {refs.r1_4h != null && <span className="tag" style={{ fontSize: 11, color: "var(--amber)" }}>4H R1 {fmtMoneyDash(refs.r1_4h)}</span>}
+              {refs.r2_4h != null && <span className="tag" style={{ fontSize: 11, color: "var(--amber)" }}>4H R2 {fmtMoneyDash(refs.r2_4h)}</span>}
+              {refs.breakout_4h != null && <span className="tag" style={{ fontSize: 11, color: "var(--blue)" }}>4H Breakout {fmtMoneyDash(refs.breakout_4h)}</span>}
+              {refs.trend_failure_4h != null && <span className="tag" style={{ fontSize: 11, color: "var(--red)" }}>4H Trend Failure {fmtMoneyDash(refs.trend_failure_4h)}</span>}
+            </div>
+            <div style={{ marginTop: 5, fontSize: 10, color: "var(--muted)", lineHeight: 1.4 }}>
+              Trend Failure = 4H bullish structure breaks. Not a trade stop loss.
+            </div>
+          </div>
+        </details>
+      ) : (refs.possible_pullback_zone || refs.resistance || refs.old_breakout_level || refs.trend_failure_reference || refs.four_hour_support) ? (
         <details style={{ marginTop: 10 }}>
           <summary style={{ cursor: "pointer", fontSize: 12, color: "var(--muted)", fontWeight: 700 }}>Reference Levels</summary>
           <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
             {refs.possible_pullback_zone?.preferred && <span className="tag" style={{ fontSize: 11 }}>Pullback {fmtMoneyDash(refs.possible_pullback_zone.preferred)}</span>}
             {refs.resistance && <span className="tag" style={{ fontSize: 11 }}>Resistance {fmtMoneyDash(refs.resistance)}</span>}
             {refs.old_breakout_level && <span className="tag" style={{ fontSize: 11 }}>Breakout {fmtMoneyDash(refs.old_breakout_level)}</span>}
-            {refs.invalidation_reference && <span className="tag" style={{ fontSize: 11 }}>Invalidation ref {fmtMoneyDash(refs.invalidation_reference)}</span>}
-            {refs.four_hour_support && <span className="tag" style={{ fontSize: 11 }}>4H support {fmtMoneyDash(refs.four_hour_support)}</span>}
+            {refs.trend_failure_reference && <span className="tag" style={{ fontSize: 11 }}>4H Trend Failure {fmtMoneyDash(refs.trend_failure_reference)}</span>}
+            {refs.four_hour_support && <span className="tag" style={{ fontSize: 11 }}>4H Support {fmtMoneyDash(refs.four_hour_support)}</span>}
           </div>
         </details>
-      )}
+      ) : null}
       {why && why.alert_status === "NO_ALERT" && mode === "entry" && (
         <details style={{ marginTop: 10 }}>
           <summary style={{ cursor: "pointer", fontSize: 12, color: "var(--muted)", fontWeight: 700 }}>Why no buy alert?</summary>
