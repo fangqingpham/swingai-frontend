@@ -2083,7 +2083,30 @@ const positionActionStyle = summary => {
   return { color: "var(--green)", borderColor: "rgba(0,255,178,0.45)", background: "rgba(0,255,178,0.10)" };
 };
 const fmtMoneyDash = value => value == null || value === "" || Number.isNaN(Number(value)) ? "—" : `$${Number(value).toFixed(2)}`;
-const fmtRRDash = value => value == null || value === "" || Number.isNaN(Number(value)) ? "—" : `1:${Number(value).toFixed(2)}`;
+const fmtRRDash = value => value == null || value === "" || Number.isNaN(Number(value)) ? "—" : `${Number(value).toFixed(2)}:1`;
+const fmtBoolYesNo = value => value ? "Yes" : "No";
+const fmtBackendLabel = value => value ? String(value).replaceAll("_", " ") : "—";
+const fmtZone = zone => {
+  if (!zone) return "—";
+  if (typeof zone === "string") return zone;
+  if (zone.label) return zone.label;
+  const low = numberOrNull(zone.low);
+  const high = numberOrNull(zone.high);
+  if (low == null && high == null) return "—";
+  if (low != null && high != null && Math.abs(low - high) > 0.005) return `${fmtMoneyDash(low)}-${fmtMoneyDash(high)}`;
+  return fmtMoneyDash(low ?? high);
+};
+const entryPlanExplanation = plan => {
+  const setupType = String(plan?.setup_type || "");
+  const blocked = (plan?.blocked_reasons || []).map(fmtBackendLabel).join(", ");
+  if (setupType === "pullback_reached_wait_reclaim") return "Pullback reached support. Waiting for 30m reclaim confirmation.";
+  if (setupType === "breakout_detected_wait_retest") return "Breakout detected, but not actionable yet. Waiting for retest.";
+  if (setupType === "breakout_retest_wait_reclaim") return "Old resistance is being retested. Waiting for 30m reclaim.";
+  if (setupType === "direct_breakout_entry_ready") return "Direct breakout confirmed. Entry alert eligible.";
+  if (setupType.startsWith("avoid")) return `No entry.${blocked ? ` Reason: ${blocked}.` : ""}`;
+  if (setupType === "insufficient_confirmation_data") return "Waiting for 30m confirmation data. Static 4H levels remain valid.";
+  return plan?.trade_plan_note || plan?.current_stage || "Waiting for backend entry-state update.";
+};
 
 const fmtDateTime = value => {
   if (!value) return "-";
@@ -2201,12 +2224,15 @@ function EntryWatchButton({ analysis, onSaved, compact = false, disabled = false
 
   // Determine button label and style based on final action status
   const finalAction = String((analysis?.final_action_card?.final_action || analysis?.final_action || "")).toLowerCase();
+  const backendEntryPlan = analysis?.final_action_card?.entry_plan || analysis?.conditional_rr || {};
+  const backendButtonLabel = backendEntryPlan?.button_label;
   const isAvoid = ["avoid", "invalidated", "market_hostile"].includes(finalAction);
   const isBlocked = ["data_anomaly_no_action", "data_stale"].includes(finalAction);
   const isExtended = ["missed_first_entry", "watch_only"].includes(finalAction) ||
     (analysis?.action_status === "too_extended");
   const btnLabel = state === "saving" ? "Saving..."
     : state === "saved" ? "Watching"
+    : backendButtonLabel ? backendButtonLabel
     : isAvoid ? "Monitor Only"
     : isExtended ? "Watch for Retest"
     : "Watch Entry Signal";
@@ -2422,20 +2448,20 @@ function DecisionLayerSections({ analysis, compact = false }) {
 
       {/* Entry Watch / Conditional Plan — 30m confirmation + estimated R:R */}
       {(() => {
-        const rr = analysis.conditional_rr || {};
+        const rr = (analysis.final_action_card || {}).entry_plan || analysis.conditional_rr || {};
         const conf30m = analysis.confirmation_30m || {};
-        const hasRR = rr.trade_plan_status || rr.estimated_rr_to_r1 != null;
+        const hasRR = rr.trade_plan_status || rr.setup_type || rr.estimated_rr_to_r1 != null;
         const has30mStatus = conf30m.data_available != null || rr.trade_plan_status;
         if (!hasRR && !has30mStatus) return null;
-        const isConfirmed = conf30m.confirmed;
+        const isConfirmed = Boolean(conf30m.confirmed);
         const status = rr.trade_plan_status || "no_active_trade_plan_yet";
         const no30mData = conf30m.data_available === false || status === "insufficient_30m_data";
         const blockedReasons = rr.blocked_reasons || [];
         const isBlocked = blockedReasons.length > 0 || rr.confirmation_triggered_but_blocked === true;
-        const BLOCKED_STATUSES = ["breakout_confirmed_wait_retest", "confirmation_blocked", "not_practical"];
+        const BLOCKED_STATUSES = ["avoid_low_rr", "avoid_extended", "avoid_no_trade", "false_breakout_avoid", "breakout_detected_wait_retest", "confirmation_blocked", "not_practical"];
         const isBlockedStatus = BLOCKED_STATUSES.includes(status);
         // Green only when genuinely actionable (confirmed + no blockers)
-        const isActionable = isConfirmed && !isBlocked && status === "confirmation_triggered";
+        const isActionable = rr.alert_eligible === true;
         const statusColor = isActionable ? "var(--green)"
           : no30mData ? "var(--muted)"
           : isBlockedStatus ? "var(--amber)"
@@ -2445,7 +2471,7 @@ function DecisionLayerSections({ analysis, compact = false }) {
           ? "30m confirmation unavailable — missing 30m candle data. No active trade plan."
           : "No active trade plan yet — waiting for 30m candle-close confirmation.");
         const setupType = rr.setup_type;
-        const confirmTrigger = rr.confirmation_trigger_price;
+        const confirmTrigger = fmtZone(rr.confirmation_trigger_zone) !== "—" ? fmtZone(rr.confirmation_trigger_zone) : fmtMoneyDash(rr.confirmation_trigger_price);
         const assumedEntry = rr.assumed_entry_price;
         const assumedEntrySource = rr.assumed_entry_source;
         const stopSrc = rr.stop_reference_source || "4H S1";
@@ -2462,11 +2488,11 @@ function DecisionLayerSections({ analysis, compact = false }) {
                 </div>
               ) : isBlocked || isBlockedStatus ? (
                 <div style={{ marginBottom: 8, padding: "7px 10px", borderRadius: 5, background: "rgba(251,176,36,0.07)", border: "1px solid rgba(251,176,36,0.30)", fontSize: 12, color: "var(--amber)", lineHeight: 1.5 }}>
-                  {tradePlanNote}
+                  {entryPlanExplanation(rr)}
                 </div>
               ) : (
                 <div style={{ marginBottom: 8, padding: "7px 10px", borderRadius: 5, background: "rgba(255,255,255,0.025)", border: "1px solid var(--border2)", fontSize: 12, color: "var(--text2)", lineHeight: 1.5 }}>
-                  {tradePlanNote}
+                  {entryPlanExplanation(rr)}
                 </div>
               )}
               {blockedReasons.length > 0 && (
@@ -2479,23 +2505,29 @@ function DecisionLayerSections({ analysis, compact = false }) {
                 </div>
               )}
               <DetailGrid items={[
-                ["Setup Type", setupType ? setupType.replace(/_/g, " ") : "—"],
-                ["30m Confirmation", no30mData ? "Missing 30m candle data — no entry confirmation possible" : (conf30m.condition_description || "Watching")],
+                ["Setup Type", fmtBackendLabel(setupType)],
+                ["Current Stage", rr.current_stage || "—"],
+                ["Entry Trigger", confirmTrigger],
+                ["Entry Window", fmtZone(rr.entry_window)],
+                ["Support Zone", fmtZone(rr.support_zone)],
+                ["Retest Zone", fmtZone(rr.retest_zone)],
+                ["30m Confirmation", no30mData ? "Missing 30m candle data - no entry confirmation possible" : (conf30m.condition_description || "Watching")],
                 ["Confirmation Type", isConfirmed ? (conf30m.confirmation_type?.replace(/_/g, " ") || "—") : "—"],
-                ["Confirmation Price", isConfirmed && conf30m.confirmation_price != null ? `$${Number(conf30m.confirmation_price).toFixed(2)}${isBlocked ? " (blocked)" : ""}` : "—"],
-                ["30m Watch Trigger", !no30mData && !isConfirmed && confirmTrigger != null ? `$${Number(confirmTrigger).toFixed(2)}` : "—"],
+                ["Confirmation Price", isConfirmed && conf30m.confirmation_price != null ? `${fmtMoneyDash(conf30m.confirmation_price)}${isBlocked ? " (blocked)" : ""}` : "—"],
+                ["30m Watch Trigger", !no30mData && !isConfirmed ? confirmTrigger : "—"],
                 ["Assumed Entry", !no30mData && assumedEntry != null
-                  ? `$${Number(assumedEntry).toFixed(2)}${assumedEntrySource === "confirmation_trigger_projected" ? " (projected)" : ""}`
+                  ? `${fmtMoneyDash(assumedEntry)}${assumedEntrySource === "confirmation_trigger_projected" ? " (projected)" : ""}`
                   : (no30mData ? "Unavailable (no 30m data)" : "—")],
-                [`Stop Reference (${stopSrc})`, rr.stop_reference_level != null ? `$${Number(rr.stop_reference_level).toFixed(2)} (structural ref)` : "—"],
-                ["Nearest 4H Resistance (R1)", rr.r1_reward_reference != null ? `$${Number(rr.r1_reward_reference).toFixed(2)}` : "—"],
-                ["Next 4H Resistance (R2)", rr.r2_reward_reference != null ? `$${Number(rr.r2_reward_reference).toFixed(2)}` : "—"],
-                ["Est R:R to R1", !no30mData && rr.estimated_rr_to_r1 != null
-                  ? `${Number(rr.estimated_rr_to_r1).toFixed(1)}:1${isBlocked ? " (blocked)" : " (if 30m confirms)"}`
-                  : "—"],
-                ["Est R:R to R2", !no30mData && rr.estimated_rr_to_r2 != null
-                  ? `${Number(rr.estimated_rr_to_r2).toFixed(1)}:1${isBlocked ? " (blocked)" : " (if 30m confirms)"}`
-                  : "—"],
+                ["Assumed Entry Source", fmtBackendLabel(assumedEntrySource)],
+                [`Stop Reference (${stopSrc})`, rr.stop_reference_level != null ? `${fmtMoneyDash(rr.stop_reference_level)} (structural ref)` : "—"],
+                ["Trend Failure", fmtMoneyDash(rr.trend_failure_level)],
+                ["Target 1 / R1", rr.target_1 != null ? fmtMoneyDash(rr.target_1) : "—"],
+                ["Target 2 / R2", rr.target_2 != null ? fmtMoneyDash(rr.target_2) : (rr.r2_reward_reference != null ? `${fmtMoneyDash(rr.r2_reward_reference)} reference` : "—")],
+                ["R:R to Target 1 / R1", fmtRRDash(rr.estimated_rr_to_r1)],
+                ["R:R to Target 2 / R2", fmtRRDash(rr.estimated_rr_to_r2)],
+                ["Alert Eligible", fmtBoolYesNo(rr.alert_eligible)],
+                ["Blocked Reasons", blockedReasons.length ? blockedReasons.map(fmtBackendLabel).join(", ") : "—"],
+                ["Button Label", rr.button_label || "—"],
               ]} />
               <div style={{ marginTop: 5, fontSize: 10, color: "var(--muted)", lineHeight: 1.4 }}>
                 Stop reference = 4H structural support (not a trade stop loss). Target references = nearest 4H resistance. R:R is estimated from projected entry. Minimum 2:1 R:R required for an actionable alert. Actual levels are your responsibility.
@@ -2778,6 +2810,7 @@ function UnifiedActionCard({ analysis, mode = "entry" }) {
   const accentBorder = isGreen ? "rgba(34,197,94,0.22)" : isRed ? "rgba(255,77,77,0.22)" : isAmber ? "rgba(251,176,36,0.22)" : "rgba(77,166,255,0.22)";
   const activePlan = ua.active_trade_plan || {};
   const refs = ua.reference_levels || analysis?.reference_levels || {};
+  const entryPlan = ua.entry_plan || analysis?.conditional_rr || {};
   const why = ua.why_no_alert;
   const riskStyle = {
     critical: { color: "var(--red)", borderColor: "rgba(255,77,77,0.42)", background: "rgba(255,77,77,0.08)" },
@@ -2804,6 +2837,32 @@ function UnifiedActionCard({ analysis, mode = "entry" }) {
           {ua.active_stop && <span className="tag" style={{ fontSize: 11, color: "var(--red)", borderColor: "rgba(255,77,77,0.35)" }}>Stop {fmtMoneyDash(ua.active_stop)}</span>}
           {ua.target_1 && <span className="tag" style={{ fontSize: 11, color: "var(--green2)", borderColor: "rgba(163,247,191,0.35)" }}>T1 {fmtMoneyDash(ua.target_1)}</span>}
           {ua.target_2 && <span className="tag" style={{ fontSize: 11, color: "var(--muted)" }}>T2 {fmtMoneyDash(ua.target_2)}</span>}
+        </div>
+      )}
+      {entryPlan?.setup_type && (
+        <div style={{ marginTop: 10, padding: "10px 11px", borderRadius: 6, background: "rgba(255,255,255,0.025)", border: "1px solid var(--border2)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 8 }}>
+            <div style={{ fontWeight: 800, fontSize: 12 }}>Entry Plan</div>
+            <span className="tag" style={{ fontSize: 11, color: entryPlan.alert_eligible ? "var(--green)" : "var(--amber)", borderColor: entryPlan.alert_eligible ? "rgba(34,197,94,0.35)" : "rgba(251,176,36,0.35)" }}>
+              {entryPlan.button_label || "No Entry"}
+            </span>
+          </div>
+          <div style={{ color: "var(--text2)", fontSize: 12, lineHeight: 1.5, marginBottom: 8 }}>{entryPlanExplanation(entryPlan)}</div>
+          <DetailGrid items={[
+            ["Setup Type", fmtBackendLabel(entryPlan.setup_type)],
+            ["Current Stage", entryPlan.current_stage || "—"],
+            ["Entry Trigger", fmtZone(entryPlan.confirmation_trigger_zone) !== "—" ? fmtZone(entryPlan.confirmation_trigger_zone) : fmtMoneyDash(entryPlan.confirmation_trigger_price)],
+            ["Entry Window", fmtZone(entryPlan.entry_window)],
+            ["Support / Retest Zone", fmtZone(entryPlan.support_zone) !== "—" ? fmtZone(entryPlan.support_zone) : fmtZone(entryPlan.retest_zone)],
+            ["Stop Reference", fmtMoneyDash(entryPlan.stop_reference_level)],
+            ["Trend Failure", fmtMoneyDash(entryPlan.trend_failure_level)],
+            ["Target 1", fmtMoneyDash(entryPlan.target_1)],
+            ["Target 2", fmtMoneyDash(entryPlan.target_2)],
+            ["R:R to Target 1", fmtRRDash(entryPlan.estimated_rr_to_r1)],
+            ["R:R to Target 2", fmtRRDash(entryPlan.estimated_rr_to_r2)],
+            ["Alert Eligible", fmtBoolYesNo(entryPlan.alert_eligible)],
+            ["Blocked Reasons", (entryPlan.blocked_reasons || []).length ? entryPlan.blocked_reasons.map(fmtBackendLabel).join(", ") : "—"],
+          ]} />
         </div>
       )}
       {ua.data_quality?.status && ua.data_quality.status !== "valid" && (
