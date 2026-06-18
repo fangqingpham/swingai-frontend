@@ -2106,6 +2106,8 @@ const listify = value => {
 const ENTRY_STATUS_LABELS = {
   waiting_for_pullback: "Waiting for Pullback",
   waiting_for_1h_confirmation: "Wait — 30m Pending",
+  waiting_for_30m_confirmation: "Wait — 30m Pending",
+  waiting_for_30m_data: "30m Data Unavailable",
   entry_confirmed: "Entry Confirmed",
   entry_ready: "Entry Ready",
   missed_entry: "Missed — Wait for Pullback",
@@ -2136,8 +2138,8 @@ const ENTRY_ACTION_LABELS = {
 const entryStatusStyle = status => {
   if (["entry_confirmed", "entry_ready"].includes(status)) return { color: "var(--green)", borderColor: "var(--green)", background: "rgba(0,255,178,.08)" };
   if (["invalidated", "expired", "cancelled"].includes(status)) return { color: "var(--red)", borderColor: "var(--red)", background: "rgba(255,77,77,.08)" };
-  if (["waiting_for_pullback", "missed_entry", "pullback_forming"].includes(status)) return { color: "var(--amber)", borderColor: "var(--amber)", background: "rgba(251,176,36,.08)" };
-  if (["reconfirmation_needed"].includes(status)) return { color: "var(--blue)", borderColor: "var(--blue)", background: "rgba(77,166,255,.08)" };
+  if (["waiting_for_pullback", "missed_entry", "pullback_forming", "waiting_for_30m_data"].includes(status)) return { color: "var(--amber)", borderColor: "var(--amber)", background: "rgba(251,176,36,.08)" };
+  if (["reconfirmation_needed", "waiting_for_30m_confirmation", "waiting_for_1h_confirmation"].includes(status)) return { color: "var(--blue)", borderColor: "var(--blue)", background: "rgba(77,166,255,.08)" };
   return { color: "var(--blue)", borderColor: "var(--blue)", background: "rgba(77,166,255,.08)" };
 };
 const numberOrNull = value => value == null || value === "" || Number.isNaN(Number(value)) ? null : Number(value);
