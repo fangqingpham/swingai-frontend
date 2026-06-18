@@ -2199,6 +2199,19 @@ function EntryWatchButton({ analysis, onSaved, compact = false, disabled = false
   const payload = buildEntryWatchPayload(analysis, strategyMode);
   const canSave = Boolean(payload.ticker);
 
+  // Determine button label and style based on final action status
+  const finalAction = String((analysis?.final_action_card?.final_action || analysis?.final_action || "")).toLowerCase();
+  const isAvoid = ["avoid", "invalidated", "market_hostile"].includes(finalAction);
+  const isBlocked = ["data_anomaly_no_action", "data_stale"].includes(finalAction);
+  const isExtended = ["missed_first_entry", "watch_only"].includes(finalAction) ||
+    (analysis?.action_status === "too_extended");
+  const btnLabel = state === "saving" ? "Saving..."
+    : state === "saved" ? "Watching"
+    : isAvoid ? "Monitor Only"
+    : isExtended ? "Watch for Retest"
+    : "Watch Entry Signal";
+  const btnClass = isAvoid ? "btn btn-ghost" : "btn btn-green";
+
   const save = async () => {
     if (!canSave || state === "saving") return;
     setState("saving");
@@ -2224,8 +2237,8 @@ function EntryWatchButton({ analysis, onSaved, compact = false, disabled = false
   return (
     <div style={{ display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
       {!compact && <StrategyModeSelect value={strategyMode} onChange={setStrategyMode} label="Watch Mode" />}
-      <button className="btn btn-green" style={compact ? { padding: "4px 8px", fontSize: 10, minHeight: 26 } : undefined} onClick={save} disabled={disabled || !canSave || state === "saving"}>
-        {state === "saving" ? "Saving..." : state === "saved" ? "Watching" : "Watch Entry Signal"}
+      <button className={btnClass} style={compact ? { padding: "4px 8px", fontSize: 10, minHeight: 26 } : undefined} onClick={save} disabled={disabled || !canSave || state === "saving" || isBlocked}>
+        {btnLabel}
       </button>
       {message && (
         <span style={{ fontSize: 11, color: state === "error" ? "var(--red)" : "var(--green)" }}>{message}</span>
@@ -2417,10 +2430,25 @@ function DecisionLayerSections({ analysis, compact = false }) {
         const isConfirmed = conf30m.confirmed;
         const status = rr.trade_plan_status || "no_active_trade_plan_yet";
         const no30mData = conf30m.data_available === false || status === "insufficient_30m_data";
-        const statusColor = isConfirmed ? "var(--green)" : no30mData ? "var(--muted)" : status === "not_practical" ? "var(--red)" : "var(--amber)";
+        const blockedReasons = rr.blocked_reasons || [];
+        const isBlocked = blockedReasons.length > 0 || rr.confirmation_triggered_but_blocked === true;
+        const BLOCKED_STATUSES = ["breakout_confirmed_wait_retest", "confirmation_blocked", "not_practical"];
+        const isBlockedStatus = BLOCKED_STATUSES.includes(status);
+        // Green only when genuinely actionable (confirmed + no blockers)
+        const isActionable = isConfirmed && !isBlocked && status === "confirmation_triggered";
+        const statusColor = isActionable ? "var(--green)"
+          : no30mData ? "var(--muted)"
+          : isBlockedStatus ? "var(--amber)"
+          : isBlocked ? "var(--amber)"
+          : "var(--amber)";
         const tradePlanNote = rr.trade_plan_note || (no30mData
           ? "30m confirmation unavailable — missing 30m candle data. No active trade plan."
           : "No active trade plan yet — waiting for 30m candle-close confirmation.");
+        const setupType = rr.setup_type;
+        const confirmTrigger = rr.confirmation_trigger_price;
+        const assumedEntry = rr.assumed_entry_price;
+        const assumedEntrySource = rr.assumed_entry_source;
+        const stopSrc = rr.stop_reference_source || "4H S1";
         return (
           <details open style={sectionStyle}>
             <summary style={{ cursor: "pointer", fontWeight: 800, listStyle: "none", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -2432,24 +2460,45 @@ function DecisionLayerSections({ analysis, compact = false }) {
                 <div style={{ marginBottom: 8, padding: "7px 10px", borderRadius: 5, background: "rgba(255,255,255,0.025)", border: "1px solid rgba(251,176,36,0.25)", fontSize: 12, color: "var(--amber)", lineHeight: 1.5 }}>
                   30m confirmation unavailable — missing 30m candle data. No active trade plan.
                 </div>
+              ) : isBlocked || isBlockedStatus ? (
+                <div style={{ marginBottom: 8, padding: "7px 10px", borderRadius: 5, background: "rgba(251,176,36,0.07)", border: "1px solid rgba(251,176,36,0.30)", fontSize: 12, color: "var(--amber)", lineHeight: 1.5 }}>
+                  {tradePlanNote}
+                </div>
               ) : (
                 <div style={{ marginBottom: 8, padding: "7px 10px", borderRadius: 5, background: "rgba(255,255,255,0.025)", border: "1px solid var(--border2)", fontSize: 12, color: "var(--text2)", lineHeight: 1.5 }}>
                   {tradePlanNote}
                 </div>
               )}
+              {blockedReasons.length > 0 && (
+                <div style={{ marginBottom: 8, display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {blockedReasons.map((r, i) => (
+                    <span key={i} className="tag" style={{ fontSize: 10, color: "var(--amber)", borderColor: "rgba(251,176,36,0.35)" }}>
+                      {r.replace(/_/g, " ")}
+                    </span>
+                  ))}
+                </div>
+              )}
               <DetailGrid items={[
+                ["Setup Type", setupType ? setupType.replace(/_/g, " ") : "—"],
                 ["30m Confirmation", no30mData ? "Missing 30m candle data — no entry confirmation possible" : (conf30m.condition_description || "Watching")],
                 ["Confirmation Type", isConfirmed ? (conf30m.confirmation_type?.replace(/_/g, " ") || "—") : "—"],
-                ["Confirmation Price", isConfirmed && conf30m.confirmation_price != null ? `$${Number(conf30m.confirmation_price).toFixed(2)}` : "—"],
-                ["Assumed Entry", !no30mData && rr.assumed_entry_price != null ? `$${Number(rr.assumed_entry_price).toFixed(2)}` : (no30mData ? "Unavailable (no 30m data)" : "—")],
-                ["Stop Reference (4H S1)", rr.stop_reference_level != null ? `$${Number(rr.stop_reference_level).toFixed(2)} (4H support zone)` : "—"],
+                ["Confirmation Price", isConfirmed && conf30m.confirmation_price != null ? `$${Number(conf30m.confirmation_price).toFixed(2)}${isBlocked ? " (blocked)" : ""}` : "—"],
+                ["30m Watch Trigger", !no30mData && !isConfirmed && confirmTrigger != null ? `$${Number(confirmTrigger).toFixed(2)}` : "—"],
+                ["Assumed Entry", !no30mData && assumedEntry != null
+                  ? `$${Number(assumedEntry).toFixed(2)}${assumedEntrySource === "confirmation_trigger_projected" ? " (projected)" : ""}`
+                  : (no30mData ? "Unavailable (no 30m data)" : "—")],
+                [`Stop Reference (${stopSrc})`, rr.stop_reference_level != null ? `$${Number(rr.stop_reference_level).toFixed(2)} (structural ref)` : "—"],
                 ["Nearest 4H Resistance (R1)", rr.r1_reward_reference != null ? `$${Number(rr.r1_reward_reference).toFixed(2)}` : "—"],
                 ["Next 4H Resistance (R2)", rr.r2_reward_reference != null ? `$${Number(rr.r2_reward_reference).toFixed(2)}` : "—"],
-                ["Est R:R to R1", !no30mData && rr.estimated_rr_to_r1 != null ? `${Number(rr.estimated_rr_to_r1).toFixed(1)}:1 (if 30m confirms)` : "—"],
-                ["Est R:R to R2", !no30mData && rr.estimated_rr_to_r2 != null ? `${Number(rr.estimated_rr_to_r2).toFixed(1)}:1 (if 30m confirms)` : "—"],
+                ["Est R:R to R1", !no30mData && rr.estimated_rr_to_r1 != null
+                  ? `${Number(rr.estimated_rr_to_r1).toFixed(1)}:1${isBlocked ? " (blocked)" : " (if 30m confirms)"}`
+                  : "—"],
+                ["Est R:R to R2", !no30mData && rr.estimated_rr_to_r2 != null
+                  ? `${Number(rr.estimated_rr_to_r2).toFixed(1)}:1${isBlocked ? " (blocked)" : " (if 30m confirms)"}`
+                  : "—"],
               ]} />
               <div style={{ marginTop: 5, fontSize: 10, color: "var(--muted)", lineHeight: 1.4 }}>
-                Stop reference = 4H S1 (structural support, not a trade stop loss). Target references = nearest 4H resistance. R:R is estimated only if 30m confirmation triggers. Actual levels are your responsibility.
+                Stop reference = 4H structural support (not a trade stop loss). Target references = nearest 4H resistance. R:R is estimated from projected entry. Minimum 2:1 R:R required for an actionable alert. Actual levels are your responsibility.
               </div>
             </div>
           </details>
