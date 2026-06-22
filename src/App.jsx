@@ -109,6 +109,11 @@ const normalizeActionLabel = value => ({
   wait_for_30m_confirmation: "Wait — 30m Pending",
   waiting_for_30m_confirmation: "Wait — 30m Pending",
   waiting_for_30m_data: "30m Data Unavailable",
+  review_confirmation: "Review Confirmation",
+  confirmation_seen_pending_entry: "Review Confirmation",
+  support_test_warning: "Support Test",
+  watch_support: "Watch Support",
+  confirmed_but_not_actionable: "Confirmed - Review",
   wait_for_trigger: "Waiting for Trigger",
   wait_for_pullback: "Wait for Pullback",
   wait_for_breakout: "Wait for Breakout",
@@ -2131,6 +2136,8 @@ const ENTRY_STATUS_LABELS = {
   waiting_for_1h_confirmation: "Wait — 30m Pending",
   waiting_for_30m_confirmation: "Wait — 30m Pending",
   waiting_for_30m_data: "30m Data Unavailable",
+  confirmation_seen_pending_entry: "Confirmation Seen",
+  support_test_warning: "Support Test",
   entry_confirmed: "Entry Confirmed",
   entry_ready: "Entry Ready",
   missed_entry: "Missed — Wait for Pullback",
@@ -2161,8 +2168,8 @@ const ENTRY_ACTION_LABELS = {
 const entryStatusStyle = status => {
   if (["entry_confirmed", "entry_ready"].includes(status)) return { color: "var(--green)", borderColor: "var(--green)", background: "rgba(0,255,178,.08)" };
   if (["invalidated", "expired", "cancelled"].includes(status)) return { color: "var(--red)", borderColor: "var(--red)", background: "rgba(255,77,77,.08)" };
-  if (["waiting_for_pullback", "missed_entry", "pullback_forming", "waiting_for_30m_data"].includes(status)) return { color: "var(--amber)", borderColor: "var(--amber)", background: "rgba(251,176,36,.08)" };
-  if (["reconfirmation_needed", "waiting_for_30m_confirmation", "waiting_for_1h_confirmation"].includes(status)) return { color: "var(--blue)", borderColor: "var(--blue)", background: "rgba(77,166,255,.08)" };
+  if (["waiting_for_pullback", "missed_entry", "pullback_forming", "waiting_for_30m_data", "support_test_warning"].includes(status)) return { color: "var(--amber)", borderColor: "var(--amber)", background: "rgba(251,176,36,.08)" };
+  if (["reconfirmation_needed", "waiting_for_30m_confirmation", "waiting_for_1h_confirmation", "confirmation_seen_pending_entry"].includes(status)) return { color: "var(--blue)", borderColor: "var(--blue)", background: "rgba(77,166,255,.08)" };
   return { color: "var(--blue)", borderColor: "var(--blue)", background: "rgba(77,166,255,.08)" };
 };
 const numberOrNull = value => value == null || value === "" || Number.isNaN(Number(value)) ? null : Number(value);
@@ -2411,6 +2418,7 @@ function DecisionLayerSections({ analysis, compact = false }) {
       {/* 4H Reference Map — from 4H closed bars only (S1/S2/R1/R2/breakout/trend failure) */}
       {(() => {
         const refs = analysis.reference_levels || (analysis.final_action_card || {}).reference_levels || {};
+        const entryPlan = (analysis.final_action_card || {}).entry_plan || analysis.conditional_rr || {};
         const has4hMap = refs.s1_4h != null || refs.r1_4h != null || refs.breakout_4h != null;
         const hasFinalActionCard = analysis.final_action_card != null || analysis.unified_action != null;
         if (!hasFinalActionCard) return null;
@@ -2421,7 +2429,7 @@ function DecisionLayerSections({ analysis, compact = false }) {
             <div style={{ marginTop: 10 }}>
               {refs.pullback_zone?.in_zone && (
                 <div style={{ marginBottom: 8, padding: "6px 10px", borderRadius: 5, background: "rgba(251,176,36,0.08)", border: "1px solid rgba(251,176,36,0.25)", color: "var(--amber)", fontSize: 12 }}>
-                  Pullback in progress — wait for 30m candle-close confirmation
+                  {entryPlan.current_stage || "Pullback in progress - wait for 30m candle-close confirmation"}
                 </div>
               )}
               {noDataReason ? (
@@ -2877,7 +2885,7 @@ function UnifiedActionCard({ analysis, mode = "entry" }) {
           <div style={{ marginTop: 8 }}>
             {refs.pullback_zone?.in_zone && (
               <div style={{ marginBottom: 8, padding: "6px 10px", borderRadius: 5, background: "rgba(251,176,36,0.08)", border: "1px solid rgba(251,176,36,0.25)", color: "var(--amber)", fontSize: 11 }}>
-                Pullback in progress — wait for 30m candle-close confirmation
+                {entryPlan.current_stage || "Pullback in progress - wait for 30m candle-close confirmation"}
               </div>
             )}
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -3906,6 +3914,7 @@ function EntryWatchlistPage() {
   const [message, setMessage] = useState("");
   const [busyId, setBusyId] = useState("");
   const [checking, setChecking] = useState(false);
+  const [showInactive, setShowInactive] = useState(false);
   const refreshInFlightRef = useRef(false);
 
   const loadWatches = useCallback(async (opts = {}) => {
@@ -3914,7 +3923,7 @@ function EntryWatchlistPage() {
     refreshInFlightRef.current = true;
     setRefreshing(true);
     setError("");
-    const { data, error } = await api("/api/entry-watchlist");
+    const { data, error } = await api(`/api/entry-watchlist${showInactive ? "?include_inactive=true" : ""}`);
     refreshInFlightRef.current = false;
     setRefreshing(false);
     if (error) {
@@ -3927,7 +3936,7 @@ function EntryWatchlistPage() {
       if (auto) console.log(`ENTRY_WATCHLIST_AUTO_REFRESH_SUCCESS count=${nextWatches.length}`);
     }
     setLoading(false);
-  }, []);
+  }, [showInactive]);
 
   useEffect(() => {
     console.log("ENTRY_WATCHLIST_AUTO_REFRESH_START");
@@ -3991,6 +4000,9 @@ function EntryWatchlistPage() {
           </div>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button className="btn btn-ghost" onClick={() => setShowInactive(v => !v)} disabled={loading || refreshing}>
+            {showInactive ? "Hide History" : "Show History"}
+          </button>
           <button className="btn btn-ghost" onClick={() => loadWatches({ manual: true })} disabled={loading || refreshing}>
             {refreshing ? "Refreshing..." : "Refresh"}
           </button>
@@ -4022,9 +4034,9 @@ function EntryWatchlistPage() {
                   const status = w.status || "waiting_for_1h_confirmation";
                   const confirmed = status === "entry_confirmed" || w.entry_signal_status === "confirmed";
                   const timing = normalizedWatchEntryTiming(w);
-                  const whyNoAlert = w.missing_conditions?.length
+                  const whyNoAlert = w.invalidation_reason || w.support_warning_reason || (w.missing_conditions?.length
                     ? `Needs: ${[...(w.missing_conditions || [])].slice(0, 2).join("; ")}`
-                    : w.entry_block_reason || w.entry_signal_reason || "-";
+                    : w.entry_block_reason || w.entry_signal_reason || "-");
                   return (
                     <tr key={w.id || `${w.ticker}-${w.created_at}`}>
                       <td style={{ fontWeight: 800, fontSize: 13 }}>{String(w.ticker || "").toUpperCase()}</td>
@@ -4045,6 +4057,11 @@ function EntryWatchlistPage() {
                           <LeadershipBadge analysis={w} />
                         </div>
                         <div style={{ marginTop: 4 }}><SectorStrengthBadge analysis={w} /></div>
+                        {(w.invalidated_at || w.confirmed_bar_ts) && (
+                          <div style={{ marginTop: 4, fontSize: 10, color: "var(--muted)" }}>
+                            {w.invalidated_at ? `Invalidated ${fmtDateTime(w.invalidated_at)}` : `Confirmed ${fmtDateTime(w.confirmed_bar_ts)}`}
+                          </div>
+                        )}
                       </td>
                       <td>
                         <div style={{ fontWeight: 600 }}>{w.setup || "-"}</div>
